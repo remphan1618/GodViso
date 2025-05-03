@@ -56,17 +56,31 @@ COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
 # Set the working directory to the application code directory
 WORKDIR ${VISOMASTER_CODE_DIR}
 
-# --- Download Models ---
-RUN echo "Running model download script..." && \
-    python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
-    echo "Model download script finished." && \
-    # Clean up any temporary files created during model download
-    rm -rf /tmp/* ~/.cache
+# --- Create model placeholder directory without downloading models during build ---
+RUN mkdir -p model_assets && \
+    mkdir -p "${VISOMASTER_MODELS_DIR}" && \
+    echo "Models will be downloaded on first container startup" > model_assets/README.txt
+
+# --- Prepare download-on-startup script ---
+RUN echo '#!/bin/bash' > /app/download_and_start.sh && \
+    echo 'cd ${APP_DIR}/VisoMaster' >> /app/download_and_start.sh && \
+    echo 'if [ ! -f ${APP_DIR}/models/.downloaded ]; then' >> /app/download_and_start.sh && \
+    echo '  echo "First run: Downloading models..."' >> /app/download_and_start.sh && \
+    echo '  mkdir -p ${APP_DIR}/models' >> /app/download_and_start.sh && \
+    echo '  python download_models.py --output_dir ${APP_DIR}/models' >> /app/download_and_start.sh && \
+    echo '  touch ${APP_DIR}/models/.downloaded' >> /app/download_and_start.sh && \
+    echo '  echo "Models downloaded successfully."' >> /app/download_and_start.sh && \
+    echo 'else' >> /app/download_and_start.sh && \
+    echo '  echo "Models already downloaded. Skipping download."' >> /app/download_and_start.sh && \
+    echo 'fi' >> /app/download_and_start.sh && \
+    echo 'exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' >> /app/download_and_start.sh && \
+    chmod +x /app/download_and_start.sh
 
 # --- Runtime Configuration ---
 # Expose VNC port
 EXPOSE 5901
 # Simplified name
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-SHELL ["/bin/bash", "-c"]
+
+# Change entrypoint to our download-and-start script
+ENTRYPOINT ["/app/download_and_start.sh"]
