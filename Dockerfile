@@ -55,7 +55,8 @@ RUN echo "Running model download script..." && \
     echo "Model download script finished."
 
 # --- Runtime Configuration ---
-EXPOSE 5901 # VNC port
+# Expose VNC port
+EXPOSE 5901
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf # Simplified name
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
 SHELL ["/bin/bash", "-c"]
