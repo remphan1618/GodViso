@@ -70,6 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     ca-certificates \
     curl \
+    gnupg \
     debian-keyring \
     debian-archive-keyring \
     apt-transport-https \

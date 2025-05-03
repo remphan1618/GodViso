@@ -76,6 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgl1 \
     ca-certificates \
+    gnupg \
     perl-modules \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

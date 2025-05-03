@@ -64,7 +64,8 @@ ARG APP_DIR=/app
 ARG CADDY_VERSION=2
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-    PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH
+    PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH \
+    DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies including Caddy
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -76,6 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     ca-certificates \
     curl \
+    gnupg \
     debian-keyring \
     debian-archive-keyring \
     apt-transport-https \
