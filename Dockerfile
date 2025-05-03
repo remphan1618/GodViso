@@ -43,8 +43,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # --- Copy Application Code, Dependencies, and Internal Guide ---
 RUN mkdir -p ${VISOMASTER_CODE_DIR} ${VISOMASTER_DEPS_DIR} ${VISOMASTER_MODELS_DIR}
 COPY dependencies/ ${VISOMASTER_DEPS_DIR}/
-COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/ # Assuming VisoMaster code is in a subfolder
-COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/ # Simplified name
+# Assuming VisoMaster code is in a subfolder
+COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/
+# Copy internal guide (Simplified name)
+COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
 
 # Set the working directory to the application code directory
 WORKDIR ${VISOMASTER_CODE_DIR}
@@ -57,6 +59,7 @@ RUN echo "Running model download script..." && \
 # --- Runtime Configuration ---
 # Expose VNC port
 EXPOSE 5901
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf # Simplified name
+# Copy supervisor config (Simplified name)
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
 SHELL ["/bin/bash", "-c"]
