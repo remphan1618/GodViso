@@ -14,13 +14,53 @@ jobs:
     # Specify the type of runner the job will run on
     runs-on: ubuntu-latest # Using a standard GitHub-hosted Linux runner
     permissions:
-      contents: read      # Allow reading repository content
+      contents: write     # Allow updating repository content
       packages: write     # Allow pushing Docker image to Docker Hub/GHCR
 
     steps:
       - name: Checkout repository code
         uses: actions/checkout@v4
         # This step checks out your repository onto the runner machine
+
+      - name: Fix Dockerfile comments
+        run: |
+          # Use sed to move inline comments to dedicated lines
+          # Replace inline comments in COPY commands with comments on separate lines
+          sed -i 's/COPY \(.*\) \(.*\) # \(.*\)/# \3\nCOPY \1 \2/g' Dockerfile
+          
+          # Check if any changes were made
+          if ! git diff --quiet Dockerfile; then
+            # Commit and push the changes
+            git config --global user.name "GitHub Actions Bot"
+            git config --global user.email "actions@github.com"
+            git add Dockerfile
+            git commit -m "Auto-fix: Move inline comments in Dockerfile to separate lines"
+            git push
+            echo "Fixed Dockerfile and pushed changes"
+          else
+            echo "No changes needed in Dockerfile"
+          fi
+
+      # Free up disk space before build
+      - name: Free up disk space
+        run: |
+          # Display initial disk space
+          echo "Initial disk space:"
+          df -h
+          
+          # Remove unnecessary large packages and caches
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+          docker image prune -af
+          
+          # Display available disk space after cleanup
+          echo "Disk space after cleanup:"
+          df -h
 
       - name: Set up QEMU for multi-platform builds (optional but good practice)
         uses: docker/setup-qemu-action@v3
@@ -49,4 +89,12 @@ jobs:
           # Use GitHub Actions cache for faster subsequent builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Optimize build options to minimize disk usage
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          outputs: type=registry
+          # Add multiple platform support if needed but consider disk space implications
+          # platforms: linux/amd64
+          # Adds "--compress" to the Docker build command to reduce layer size
+          compress: true
         # This step performs the 'docker build' and 'docker push' commands on the runner

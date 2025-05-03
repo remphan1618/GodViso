@@ -23,52 +23,50 @@ RUN apt-get update && \
     wget \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# --- Conda Environment Creation ---
-# Create the environment directly
+# --- Conda Environment Creation and Activation ---
 RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
     conda clean -a -y
 
-# --- Verify Environment and Python Version ---
-# Use explicit 'conda run' for verification
-RUN conda run -n ${CONDA_ENV_NAME} echo "Verifying Conda environment ${CONDA_ENV_NAME}..." && \
-    conda run -n ${CONDA_ENV_NAME} python --version
+# Use the literal environment name in SHELL instruction since ARG variables aren't substituted here
+SHELL ["conda", "run", "-n", "visomaster", "/bin/bash", "-c"]
+RUN echo "Conda environment $CONDA_DEFAULT_ENV activated." && python --version
 
 # --- Install CUDA Toolkit and cuDNN via Conda ---
-# Use explicit 'conda run' for installation within the environment
-RUN conda run -n ${CONDA_ENV_NAME} conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
-    conda run -n ${CONDA_ENV_NAME} conda install -y -c conda-forge cudnn && \
-    conda run -n ${CONDA_ENV_NAME} conda clean -a -y
+# Combine RUN commands and clean up in same layer to reduce image size
+RUN conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
+    conda install -y -c conda-forge cudnn && \
+    conda clean -afy && \
+    rm -rf /root/.conda ~/.cache
 
 # --- Install Python Dependencies ---
-# Copy requirements first
 COPY requirements.txt .
-# Use explicit 'conda run' to execute pip within the environment
-RUN conda run -n ${CONDA_ENV_NAME} pip install --no-cache-dir -r requirements.txt \
+RUN pip install --no-cache-dir -r requirements.txt \
     --extra-index-url https://download.pytorch.org/whl/cu124 \
-    --extra-index-url https://pypi.nvidia.com
+    --extra-index-url https://pypi.nvidia.com && \
+    rm -rf ~/.cache/pip
 
 # --- Copy Application Code, Dependencies, and Internal Guide ---
 RUN mkdir -p ${VISOMASTER_CODE_DIR} ${VISOMASTER_DEPS_DIR} ${VISOMASTER_MODELS_DIR}
-COPY dependencies/ ${VISOMASTER_DEPS_DIR}/
 # Assuming VisoMaster code is in a subfolder
+COPY dependencies/ ${VISOMASTER_DEPS_DIR}/
 COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/
-# Copy internal guide (Simplified name)
+# Simplified name
 COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
 
 # Set the working directory to the application code directory
 WORKDIR ${VISOMASTER_CODE_DIR}
 
 # --- Download Models ---
-# Use explicit 'conda run' to execute the download script
 RUN echo "Running model download script..." && \
-    conda run -n ${CONDA_ENV_NAME} python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
-    echo "Model download script finished."
+    python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
+    echo "Model download script finished." && \
+    # Clean up any temporary files created during model download
+    rm -rf /tmp/* ~/.cache
 
 # --- Runtime Configuration ---
 # Expose VNC port
 EXPOSE 5901
-# Copy supervisor config (Simplified name)
+# Simplified name
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-# CMD remains the same; supervisord.conf handles 'conda run' for the app process
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-# No SHELL directive needed here or at the end
+SHELL ["/bin/bash", "-c"]
