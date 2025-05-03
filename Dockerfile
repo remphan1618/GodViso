@@ -26,6 +26,8 @@ RUN apt-get update && \
 # --- Conda Environment Creation and Activation ---
 RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
     conda clean -a -y
+
+# Use the literal environment name in SHELL instruction since ARG variables aren't substituted here
 SHELL ["conda", "run", "-n", "${CONDA_ENV_NAME}", "/bin/bash", "-c"]
 RUN echo "Conda environment $CONDA_DEFAULT_ENV activated." && python --version
 
