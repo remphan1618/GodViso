@@ -23,22 +23,27 @@ RUN apt-get update && \
     wget \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# --- Conda Environment Creation and Activation ---
+# --- Conda Environment Creation ---
+# Create the environment directly
 RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
     conda clean -a -y
 
-# Use the literal environment name in SHELL instruction since ARG variables aren't substituted here
-SHELL ["conda", "run", "-n", "${CONDA_ENV_NAME}", "/bin/bash", "-c"]
-RUN echo "Conda environment $CONDA_DEFAULT_ENV activated." && python --version
+# --- Verify Environment and Python Version ---
+# Use explicit 'conda run' for verification
+RUN conda run -n ${CONDA_ENV_NAME} echo "Verifying Conda environment ${CONDA_ENV_NAME}..." && \
+    conda run -n ${CONDA_ENV_NAME} python --version
 
 # --- Install CUDA Toolkit and cuDNN via Conda ---
-RUN conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
-    conda install -y -c conda-forge cudnn && \
-    conda clean -a -y
+# Use explicit 'conda run' for installation within the environment
+RUN conda run -n ${CONDA_ENV_NAME} conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
+    conda run -n ${CONDA_ENV_NAME} conda install -y -c conda-forge cudnn && \
+    conda run -n ${CONDA_ENV_NAME} conda clean -a -y
 
 # --- Install Python Dependencies ---
+# Copy requirements first
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
+# Use explicit 'conda run' to execute pip within the environment
+RUN conda run -n ${CONDA_ENV_NAME} pip install --no-cache-dir -r requirements.txt \
     --extra-index-url https://download.pytorch.org/whl/cu124 \
     --extra-index-url https://pypi.nvidia.com
 
@@ -54,8 +59,9 @@ COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
 WORKDIR ${VISOMASTER_CODE_DIR}
 
 # --- Download Models ---
+# Use explicit 'conda run' to execute the download script
 RUN echo "Running model download script..." && \
-    python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
+    conda run -n ${CONDA_ENV_NAME} python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
     echo "Model download script finished."
 
 # --- Runtime Configuration ---
@@ -63,5 +69,6 @@ RUN echo "Running model download script..." && \
 EXPOSE 5901
 # Copy supervisor config (Simplified name)
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# CMD remains the same; supervisord.conf handles 'conda run' for the app process
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-SHELL ["/bin/bash", "-c"]
+# No SHELL directive needed here or at the end
