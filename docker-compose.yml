@@ -1,0 +1,20 @@
+# PRIMARY docker-compose.yml (REFERENCE ONLY for Vast.ai settings)
+version: '3.8'
+services:
+  visomaster:
+    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:latest # Use primary tag
+    container_name: visomaster_container
+    restart: always
+    ports:
+      - "5901:5901" # VNC Port
+    volumes:
+      - /workspace:/workspace # Use Vast.ai's persistent storage
+    environment:
+      - TZ=UTC
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all
