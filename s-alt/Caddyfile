@@ -1,44 +1,47 @@
-# SMALL ALT Caddyfile (Portal, Runtime Models + Assets)
-# Identical to alt/Caddyfile
-
 {
-        http_port 11111
-        admin off
+	http_port {$CADDY_PORT:-11111}
+	admin off
+	log {
+		output stdout
+		level INFO
+	}
 }
 
-(auth) {
-        @forbidden not header Authorization "Bearer {env.OPEN_BUTTON_TOKEN}"
-        abort @forbidden
-}
+:{$CADDY_PORT} {
+	# --- KasmVNC GUI Proxy ---
+	handle_path /gui/* {
+		reverse_proxy localhost:{$KASM_VNC_INTERNAL_PORT:-8443} {
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
 
-:11111 {
-        encode gzip
+	# --- Log File Access ---
+	handle_path /logs/* {
+		file_server browse {
+			root /app/logs  # Changed path
+		}
+	}
 
-        # Proxy VNC WebSocket connection
-        route /vnc/* {
-                import auth
-                reverse_proxy 127.0.0.1:5901
-        }
+	# --- Root/Fallback Page ---
+	handle {
+		respond * 200 {
+			body `<!DOCTYPE html>
+<html>
+<head><title>VisoMaster Portal (s-alt)</title></head>
+<body>
+<h1>VisoMaster Portal (s-alt)</h1>
+<ul>
+	<li><a href="/gui/">Access VisoMaster GUI (KasmVNC)</a></li>
+	<li><a href="/logs/">Browse Application Logs</a></li>
+</ul>
+</body>
+</html>`
+			headers {
+				Content-Type text/html
+			}
+		}
+	}
 
-        # Serve logs from the /var/log/portal directory
-        route /logs/* {
-                import auth
-                uri strip_prefix /logs
-                file_server {
-                        root /var/log/portal
-                        browse
-                }
-        }
-
-        # Simple response for the root path
-        route / {
-                import auth
-                respond "VisoMaster Instance Portal Active (Small Alt Build)" 200
-        }
-
-        # Log Caddy's own access logs
-        log {
-                output file /var/log/portal/caddy_access.log
-                format json
-        }
+	log
 }

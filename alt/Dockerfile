@@ -1,109 +1,105 @@
-# ALT Dockerfile (Portal, Build-time Models)
-FROM continuumio/miniconda3:latest AS builder
+# Alternate VisoMaster Setup with Jupyter, Caddy, KasmVNC, Supervisord
+# Base Image: Ubuntu 22.04
+FROM ubuntu:22.04 AS base
 
-# --- Environment Setup ---
-ARG PYTHON_VERSION=3.10.13
-ARG CONDA_ENV_NAME=visomaster
-ARG CUDA_VERSION_CONDA=12.4.1
-ARG APP_DIR=/app
-ARG VISOMASTER_CODE_DIR=${APP_DIR}/VisoMaster
-ARG VISOMASTER_DEPS_DIR=${APP_DIR}/dependencies
-ARG VISOMASTER_MODELS_DIR=${APP_DIR}/models
-ARG CADDY_VERSION=2
+LABEL maintainer="remphan1618"
+LABEL description="VisoMaster with Jupyter, Caddy, KasmVNC, Supervisord. Alternate Setup."
 
-WORKDIR ${APP_DIR}
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV KASM_VNC_PATH /usr/share/kasmvnc
 
-# Install essential build tools
-RUN apt-get update && apt-get install -y --no-install-recommends wget curl \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# --- Conda Environment Creation ---
-RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
-    conda clean -a -y
-
-# --- Verify Environment and Python Version ---
-RUN conda run -n ${CONDA_ENV_NAME} echo "Verifying Conda environment ${CONDA_ENV_NAME}..." && \
-    conda run -n ${CONDA_ENV_NAME} python --version
-
-# --- Install CUDA Toolkit and cuDNN via Conda ---
-RUN conda run -n ${CONDA_ENV_NAME} conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
-    conda run -n ${CONDA_ENV_NAME} conda install -y -c conda-forge cudnn && \
-    conda run -n ${CONDA_ENV_NAME} conda clean -afy && \
-    rm -rf /root/.conda ~/.cache
-
-# --- Install Python Dependencies ---
-# Copy from root context
-COPY requirements.txt .
-RUN conda run -n ${CONDA_ENV_NAME} pip install --no-cache-dir -r requirements.txt \
-    --extra-index-url https://download.pytorch.org/whl/cu124 \
-    --extra-index-url https://pypi.nvidia.com && \
-    rm -rf ~/.cache/pip
-
-# --- Copy Application Code, Dependencies, and Internal Guide ---
-# Assumes user placed assets in local 'dependencies/' folder at repo root
-RUN mkdir -p ${VISOMASTER_CODE_DIR} ${VISOMASTER_DEPS_DIR} ${VISOMASTER_MODELS_DIR}
-# Copy from root context
-COPY dependencies/ ${VISOMASTER_DEPS_DIR}/
-COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/
-COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
-
-# Set workdir for model download
-WORKDIR ${VISOMASTER_CODE_DIR}
-
-# --- Download Models During Build ---
-RUN echo "Running model download script during build..." && \
-    conda run -n ${CONDA_ENV_NAME} python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
-    echo "Model download script finished."
-
-
-# --- Final Stage ---
-FROM debian:bullseye-slim
-
-ARG CONDA_ENV_NAME=visomaster
-ARG APP_DIR=/app
-ARG CADDY_VERSION=2
-
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-    PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH \
-    DEBIAN_FRONTEND=noninteractive
-
-# Install runtime dependencies including Caddy
+# Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, and Caddy
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    ca-certificates \
+    bzip2 \
+    unzip \
+    git \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     supervisor \
     xvfb \
-    fluxbox \
+    # KasmVNC dependencies (add more as needed based on KasmVNC install script/docs)
+    libjpeg-turbo8 \
+    libwebp6 \
+    libfontconfig1 \
     x11vnc \
-    libgomp1 \
-    libgl1 \
-    ca-certificates \
+    xvfb \
+    xterm \
+    # Caddy dependencies
     curl \
     gnupg \
-    debian-keyring \
-    debian-archive-keyring \
-    apt-transport-https \
-    # Install Caddy
-    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
-    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
-    && apt-get update \
-    && apt-get install -y caddy \
+    # Clean up
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Create Caddy directories
-RUN mkdir -p /etc/caddy /var/log/portal
+# Install Caddy
+RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
+    && apt-get update && apt-get install -y caddy \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy the Conda environment from the builder stage
-COPY --from=builder /opt/conda/envs/${CONDA_ENV_NAME} /opt/conda/envs/${CONDA_ENV_NAME}
+# --- Miniconda Installation ---
+ENV CONDA_DIR /opt/conda
+ENV PATH $CONDA_DIR/bin:$PATH
 
-# Copy the application code, dependencies, models, and guide from the builder stage
-COPY --from=builder ${APP_DIR} ${APP_DIR}
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
+    /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
+    rm ~/miniconda.sh && \
+    $CONDA_DIR/bin/conda clean -tipsy && \
+    ln -s $CONDA_DIR/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo ". $CONDA_DIR/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate base" >> ~/.bashrc
 
-# Copy Caddy and supervisor configurations from alt/ folder in build context
-COPY alt/Caddyfile /etc/caddy/Caddyfile
+# Set up Conda environment for VisoMaster
+COPY alt/environment.yml /tmp/environment.yml
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy && \
+    rm /tmp/environment.yml
+
+# Activate Conda environment by default in shell
+SHELL ["/bin/bash", "-c"]
+RUN echo "conda activate visomaster" >> ~/.bashrc
+
+# --- KasmVNC Installation ---
+RUN wget https://github.com/kasmtech/KasmVNC/releases/download/v1.2.0/kasmvncserver_jammy_1.2.0_amd64.deb -O /tmp/kasmvnc.deb && \
+    apt-get update && apt-get install -y /tmp/kasmvnc.deb && \
+    rm /tmp/kasmvnc.deb && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Configure KasmVNC (optional: modify vncserver.conf if needed)
+# RUN sed -i 's/-localhost//' /etc/kasmvnc/vncserver.conf # Example: Allow non-localhost connections if needed
+
+# --- Application Setup ---
+ENV APP_DIR /app
+WORKDIR $APP_DIR
+
+# Clone VisoMaster repository
+RUN git clone https://github.com/joshsylvia/VisoMaster.git VisoMaster
+
+# Set up directories for models, dependencies, and logs
+ENV VISOMASTER_MODELS_DIR $APP_DIR/models
+ENV DEPS_DIR $APP_DIR/dependencies
+ENV LOGS_DIR $APP_DIR/logs
+RUN mkdir -p $VISOMASTER_MODELS_DIR $DEPS_DIR $LOGS_DIR
+
+# Copy configuration files and entrypoint script
+# **MODIFIED LINE BELOW**
+COPY download_and_start.sh /app/download_and_start.sh
 COPY alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY alt/Caddyfile /etc/caddy/Caddyfile
+COPY alt/index.html /app/index.html # Copy the portal page
 
-WORKDIR ${APP_DIR}/VisoMaster # Set final working directory
+# Make entrypoint script executable
+RUN chmod +x /app/download_and_start.sh
 
-# --- Runtime Configuration ---
-# Expose Caddy's internal port
-EXPOSE 11111
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Expose ports (Caddy, Jupyter - KasmVNC is proxied by Caddy)
+EXPOSE 8888
+EXPOSE 11111 # Caddy's port
+
+# Set the entrypoint to the common script
+ENTRYPOINT ["/app/download_and_start.sh"]
+
+# Default command (will be executed by entrypoint script)
+# Start Jupyter Lab allowing connections from any origin and without a token
+CMD ["conda", "run", "-n", "visomaster", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--NotebookApp.token=''", "--NotebookApp.password=''", "--allow-root", "--notebook-dir=/app"]

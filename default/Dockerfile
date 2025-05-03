@@ -1,112 +1,89 @@
-# DEFAULT Dockerfile (VNC, Runtime Models) - REVISED FOR JUPYTER COMPATIBILITY & RUNTIME DOWNLOADS
-FROM continuumio/miniconda3:latest AS builder
+# Default VisoMaster Setup with Jupyter and Caddy
+# Base Image: Ubuntu 22.04
+FROM ubuntu:22.04 AS base
 
-# --- Environment Setup ---
-ARG PYTHON_VERSION=3.10.13
-ARG CONDA_ENV_NAME=visomaster
-ARG CUDA_VERSION_CONDA=12.4.1
-ARG APP_DIR=/app
-ARG VISOMASTER_CODE_DIR=${APP_DIR}/VisoMaster
-# NOTE: VISOMASTER_DEPS_DIR and VISOMASTER_MODELS_DIR are not used for copying in this build
+LABEL maintainer="remphan1618"
+LABEL description="VisoMaster with Jupyter, Caddy, Supervisord. Standard Setup."
 
-WORKDIR ${APP_DIR}
-
-# Set noninteractive to avoid debconf prompts
+# Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential build tools
-RUN apt-get update && apt-get install -y --no-install-recommends wget curl \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# --- Conda Environment Creation ---
-RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
-    conda clean -a -y
-
-# --- Verify Environment and Python Version ---
-RUN conda run -n ${CONDA_ENV_NAME} echo "Verifying Conda environment ${CONDA_ENV_NAME}..." && \
-    conda run -n ${CONDA_ENV_NAME} python --version
-
-# --- Install CUDA Toolkit and cuDNN via Conda ---
-RUN conda run -n ${CONDA_ENV_NAME} conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
-    conda run -n ${CONDA_ENV_NAME} conda install -y -c conda-forge cudnn && \
-    conda run -n ${CONDA_ENV_NAME} conda clean -afy && \
-    rm -rf /root/.conda ~/.cache
-
-# --- Install Python Dependencies AND ipykernel ---
-# Copy from root context
-COPY requirements.txt .
-# Install ipykernel first
-RUN conda run -n ${CONDA_ENV_NAME} conda install -y ipykernel && \
-    conda run -n ${CONDA_ENV_NAME} pip install --no-cache-dir -r requirements.txt \
-    --extra-index-url https://download.pytorch.org/whl/cu124 \
-    --extra-index-url https://pypi.nvidia.com && \
-    rm -rf ~/.cache/pip
-
-# --- Register Conda Env as Jupyter Kernel ---
-RUN conda run -n ${CONDA_ENV_NAME} python -m ipykernel install --user --name=${CONDA_ENV_NAME} --display-name="Python (${CONDA_ENV_NAME})"
-
-# --- Copy ONLY Application Code and Internal Guide ---
-# Do NOT copy dependencies/ or models/ from local repo
-RUN mkdir -p ${VISOMASTER_CODE_DIR}
-# Copy from root context
-COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/
-COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
-
-
-# --- Final Stage ---
-FROM debian:bullseye-slim
-
-ARG CONDA_ENV_NAME=visomaster
-ARG APP_DIR=/app
-
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-    PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH \
-    DEBIAN_FRONTEND=noninteractive \
-    # Set SHELL to bash for Vast.ai compatibility if needed
-    SHELL=/bin/bash
-
-# Install runtime dependencies (including bash and wget for entrypoint)
+# Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, and Caddy
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    ca-certificates \
+    bzip2 \
+    unzip \
+    git \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     supervisor \
     xvfb \
-    fluxbox \
-    x11vnc \
-    libgomp1 \
-    libgl1 \
-    ca-certificates \
-    bash \
-    wget \
+    # Caddy dependencies
+    curl \
     gnupg \
-    perl-modules \
+    # Clean up
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy the Conda environment from the builder stage
-COPY --from=builder /opt/conda/envs/${CONDA_ENV_NAME} /opt/conda/envs/${CONDA_ENV_NAME}
-# Copy Jupyter kernel spec created by builder
-COPY --from=builder /root/.local/share/jupyter/kernels/${CONDA_ENV_NAME} /usr/local/share/jupyter/kernels/${CONDA_ENV_NAME}
+# Install Caddy
+RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
+    && apt-get update && apt-get install -y caddy \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# --- Miniconda Installation ---
+ENV CONDA_DIR /opt/conda
+ENV PATH $CONDA_DIR/bin:$PATH
 
-# Copy ONLY the application code and guide from the builder stage
-COPY --from=builder ${APP_DIR}/VisoMaster ${APP_DIR}/VisoMaster
-COPY --from=builder ${APP_DIR}/VisoMaster/Install_Guide.ipynb ${APP_DIR}/VisoMaster/
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
+    /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
+    rm ~/miniconda.sh && \
+    $CONDA_DIR/bin/conda clean -tipsy && \
+    ln -s $CONDA_DIR/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo ". $CONDA_DIR/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate base" >> ~/.bashrc
 
-# Copy supervisor config and entrypoint script from default/ folder
+# Set up Conda environment for VisoMaster
+COPY default/environment.yml /tmp/environment.yml
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy && \
+    rm /tmp/environment.yml
+
+# Activate Conda environment by default in shell
+SHELL ["/bin/bash", "-c"]
+RUN echo "conda activate visomaster" >> ~/.bashrc
+
+# --- Application Setup ---
+ENV APP_DIR /app
+WORKDIR $APP_DIR
+
+# Clone VisoMaster repository
+RUN git clone https://github.com/joshsylvia/VisoMaster.git VisoMaster
+
+# Set up directories for models, dependencies, and logs
+ENV VISOMASTER_MODELS_DIR $APP_DIR/models
+ENV DEPS_DIR $APP_DIR/dependencies
+ENV LOGS_DIR $APP_DIR/logs
+RUN mkdir -p $VISOMASTER_MODELS_DIR $DEPS_DIR $LOGS_DIR
+
+# Copy configuration files and entrypoint script
+# **MODIFIED LINE BELOW**
+COPY download_and_start.sh /app/download_and_start.sh
 COPY default/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY default/download_and_start.sh /app/download_and_start.sh
+COPY default/Caddyfile /etc/caddy/Caddyfile
+
+# Make entrypoint script executable
 RUN chmod +x /app/download_and_start.sh
 
-# Create models and dependencies directory structure (will be populated by entrypoint)
-RUN mkdir -p /app/models /app/dependencies
+# Expose ports (Caddy default HTTP/HTTPS, Jupyter, VisoMaster internal - adjust as needed)
+# Caddy will handle reverse proxying based on Caddyfile
+EXPOSE 8888
+EXPOSE 8080
+EXPOSE 11111
 
-WORKDIR ${APP_DIR}/VisoMaster # Set final working directory
-
-# --- Runtime Configuration ---
-# Expose VNC port
-EXPOSE 5901
-
-# ENTRYPOINT is the download script
+# Set the entrypoint to the common script
 ENTRYPOINT ["/app/download_and_start.sh"]
 
-# Define a default CMD (Vast.ai will likely override this with its Jupyter command)
-# This is what `exec "$@"` in the entrypoint will run if no other command is provided.
-CMD ["bash"]
+# Default command (will be executed by entrypoint script)
+# Start Jupyter Lab allowing connections from any origin and without a token
+CMD ["conda", "run", "-n", "visomaster", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--NotebookApp.token=''", "--NotebookApp.password=''", "--allow-root", "--notebook-dir=/app"]
