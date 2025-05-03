@@ -12,6 +12,9 @@ ARG CADDY_VERSION=2
 
 WORKDIR ${APP_DIR}
 
+# Set noninteractive to avoid debconf prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install essential build tools
 RUN apt-get update && apt-get install -y --no-install-recommends wget curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -54,7 +57,8 @@ ARG APP_DIR=/app
 ARG CADDY_VERSION=2
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-    PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH
+    PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH \
+    DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies including Caddy, bash, and wget
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -71,6 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-transport-https \
     bash \
     wget \
+    perl-modules \
     # Install Caddy
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
