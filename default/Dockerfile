@@ -1,4 +1,4 @@
-# DEFAULT Dockerfile (VNC, Runtime Models)
+# DEFAULT Dockerfile (VNC, Runtime Models) - REVISED FOR JUPYTER COMPATIBILITY & RUNTIME DOWNLOADS
 FROM continuumio/miniconda3:latest AS builder
 
 # --- Environment Setup ---
@@ -7,8 +7,7 @@ ARG CONDA_ENV_NAME=visomaster
 ARG CUDA_VERSION_CONDA=12.4.1
 ARG APP_DIR=/app
 ARG VISOMASTER_CODE_DIR=${APP_DIR}/VisoMaster
-ARG VISOMASTER_DEPS_DIR=${APP_DIR}/dependencies
-ARG VISOMASTER_MODELS_DIR=${APP_DIR}/models
+# NOTE: VISOMASTER_DEPS_DIR and VISOMASTER_MODELS_DIR are not used for copying in this build
 
 WORKDIR ${APP_DIR}
 
@@ -16,8 +15,8 @@ WORKDIR ${APP_DIR}
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install essential build tools
-RUN apt-get update && apt-get install -y --no-install-recommends wget && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends wget curl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # --- Conda Environment Creation ---
 RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
@@ -33,28 +32,25 @@ RUN conda run -n ${CONDA_ENV_NAME} conda install -y -c nvidia/label/cuda-${CUDA_
     conda run -n ${CONDA_ENV_NAME} conda clean -afy && \
     rm -rf /root/.conda ~/.cache
 
-# --- Install Python Dependencies ---
+# --- Install Python Dependencies AND ipykernel ---
 # Copy from root context
 COPY requirements.txt .
-RUN conda run -n ${CONDA_ENV_NAME} pip install --no-cache-dir -r requirements.txt \
+# Install ipykernel first
+RUN conda run -n ${CONDA_ENV_NAME} conda install -y ipykernel && \
+    conda run -n ${CONDA_ENV_NAME} pip install --no-cache-dir -r requirements.txt \
     --extra-index-url https://download.pytorch.org/whl/cu124 \
     --extra-index-url https://pypi.nvidia.com && \
     rm -rf ~/.cache/pip
 
-# --- Copy Application Code, Dependencies, and Internal Guide ---
-# Assumes user placed assets in local 'dependencies/' folder at repo root
-RUN mkdir -p ${VISOMASTER_CODE_DIR} ${VISOMASTER_DEPS_DIR} ${VISOMASTER_MODELS_DIR}
+# --- Register Conda Env as Jupyter Kernel ---
+RUN conda run -n ${CONDA_ENV_NAME} python -m ipykernel install --user --name=${CONDA_ENV_NAME} --display-name="Python (${CONDA_ENV_NAME})"
+
+# --- Copy ONLY Application Code and Internal Guide ---
+# Do NOT copy dependencies/ or models/ from local repo
+RUN mkdir -p ${VISOMASTER_CODE_DIR}
 # Copy from root context
-COPY dependencies/ ${VISOMASTER_DEPS_DIR}/
 COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/
 COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/
-
-# Set workdir for model download
-WORKDIR ${VISOMASTER_CODE_DIR}
-
-# Note: No model download during build - models will be downloaded at runtime
-# Create an empty placeholder file in the models directory to ensure it exists
-RUN touch ${VISOMASTER_MODELS_DIR}/.placeholder
 
 
 # --- Final Stage ---
@@ -65,9 +61,11 @@ ARG APP_DIR=/app
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 \
     PATH=/opt/conda/envs/${CONDA_ENV_NAME}/bin:/opt/conda/bin:$PATH \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    # Set SHELL to bash for Vast.ai compatibility if needed
+    SHELL=/bin/bash
 
-# Install runtime dependencies
+# Install runtime dependencies (including bash and wget for entrypoint)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     xvfb \
@@ -76,24 +74,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgl1 \
     ca-certificates \
+    bash \
+    wget \
     gnupg \
     perl-modules \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy the Conda environment from the builder stage
 COPY --from=builder /opt/conda/envs/${CONDA_ENV_NAME} /opt/conda/envs/${CONDA_ENV_NAME}
+# Copy Jupyter kernel spec created by builder
+COPY --from=builder /root/.local/share/jupyter/kernels/${CONDA_ENV_NAME} /usr/local/share/jupyter/kernels/${CONDA_ENV_NAME}
 
-# Copy the application code, dependencies, and guide from the builder stage
-COPY --from=builder ${APP_DIR} ${APP_DIR}
 
-# Copy supervisor configuration and entrypoint script from default/ folder
+# Copy ONLY the application code and guide from the builder stage
+COPY --from=builder ${APP_DIR}/VisoMaster ${APP_DIR}/VisoMaster
+COPY --from=builder ${APP_DIR}/VisoMaster/Install_Guide.ipynb ${APP_DIR}/VisoMaster/
+
+# Copy supervisor config and entrypoint script from default/ folder
 COPY default/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY default/download_and_start.sh /app/download_and_start.sh
 RUN chmod +x /app/download_and_start.sh
+
+# Create models and dependencies directory structure (will be populated by entrypoint)
+RUN mkdir -p /app/models /app/dependencies
 
 WORKDIR ${APP_DIR}/VisoMaster # Set final working directory
 
 # --- Runtime Configuration ---
 # Expose VNC port
 EXPOSE 5901
+
+# ENTRYPOINT is the download script
 ENTRYPOINT ["/app/download_and_start.sh"]
+
+# Define a default CMD (Vast.ai will likely override this with its Jupyter command)
+# This is what `exec "$@"` in the entrypoint will run if no other command is provided.
+CMD ["bash"]
