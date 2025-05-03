@@ -1,62 +1,52 @@
-# PRIMARY Dockerfile (Builds the standard VNC image)
-# Base image with CUDA 12.4.1 support suitable for Conda installation
-FROM continuumio/miniconda3:latest AS builder
+# PRIMARY GitHub Actions Workflow (Builds standard VNC image)
+# This workflow runs on GitHub-hosted runners (ubuntu-latest)
 
-# --- Environment Setup ---
-ARG PYTHON_VERSION=3.10.13
-ARG CONDA_ENV_NAME=visomaster
-ARG CUDA_VERSION_CONDA=12.4.1
-ARG APP_DIR=/app
-ARG VISOMASTER_CODE_DIR=${APP_DIR}/VisoMaster
-ARG VISOMASTER_DEPS_DIR=${APP_DIR}/dependencies
-ARG VISOMASTER_MODELS_DIR=${APP_DIR}/models
+name: Build and Push VisoMaster PRIMARY Docker Image
 
-WORKDIR ${APP_DIR}
+on:
+  push:
+    branches:
+      - main # Trigger on push to main
+  workflow_dispatch: # Allow manual triggering
 
-# Install essential tools, supervisor, and GUI components
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    supervisor \
-    xvfb \
-    fluxbox \
-    x11vnc \
-    wget \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+jobs:
+  build-and-push:
+    # Specify the type of runner the job will run on
+    runs-on: ubuntu-latest # Using a standard GitHub-hosted Linux runner
+    permissions:
+      contents: read      # Allow reading repository content
+      packages: write     # Allow pushing Docker image to Docker Hub/GHCR
 
-# --- Conda Environment Creation and Activation ---
-RUN conda create -y -n ${CONDA_ENV_NAME} python=${PYTHON_VERSION} && \
-    conda clean -a -y
-SHELL ["conda", "run", "-n", "${CONDA_ENV_NAME}", "/bin/bash", "-c"]
-RUN echo "Conda environment $CONDA_DEFAULT_ENV activated." && python --version
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+        # This step checks out your repository onto the runner machine
 
-# --- Install CUDA Toolkit and cuDNN via Conda ---
-RUN conda install -y -c nvidia/label/cuda-${CUDA_VERSION_CONDA} cuda-runtime && \
-    conda install -y -c conda-forge cudnn && \
-    conda clean -a -y
+      - name: Set up QEMU for multi-platform builds (optional but good practice)
+        uses: docker/setup-qemu-action@v3
+        # Allows building images for different architectures if needed
 
-# --- Install Python Dependencies ---
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    --extra-index-url https://download.pytorch.org/whl/cu124 \
-    --extra-index-url https://pypi.nvidia.com
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        # Sets up Docker Buildx, an enhanced builder backend
 
-# --- Copy Application Code, Dependencies, and Internal Guide ---
-RUN mkdir -p ${VISOMASTER_CODE_DIR} ${VISOMASTER_DEPS_DIR} ${VISOMASTER_MODELS_DIR}
-COPY dependencies/ ${VISOMASTER_DEPS_DIR}/
-COPY VisoMaster/ ${VISOMASTER_CODE_DIR}/ # Assuming VisoMaster code is in a subfolder
-COPY Install_Guide.ipynb ${VISOMASTER_CODE_DIR}/ # Simplified name
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        # Logs the runner into Docker Hub to allow pushing the image
 
-# Set the working directory to the application code directory
-WORKDIR ${VISOMASTER_CODE_DIR}
-
-# --- Download Models ---
-RUN echo "Running model download script..." && \
-    python download_models.py --output_dir ${VISOMASTER_MODELS_DIR} && \
-    echo "Model download script finished."
-
-# --- Runtime Configuration ---
-# Expose VNC port
-EXPOSE 5901
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf # Simplified name
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-SHELL ["/bin/bash", "-c"]
+      - name: Build and push PRIMARY Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Use the repository root as the build context
+          file: ./Dockerfile # Specify the primary Dockerfile
+          push: true # Push the image after building
+          tags: | # Define tags for the image
+            ${{ secrets.DOCKERHUB_USERNAME }}/visomaster:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/visomaster:${{ github.sha }}
+          # Use GitHub Actions cache for faster subsequent builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        # This step performs the 'docker build' and 'docker push' commands on the runner
