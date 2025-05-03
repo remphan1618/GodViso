@@ -1,0 +1,23 @@
+# ALT docker-compose.yml (Portal, Build-time Models) - REFERENCE ONLY
+version: '3.8'
+services:
+  visomaster_alt:
+    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:portal-latest
+    container_name: visomaster_alt_container
+    restart: always
+    ports:
+      # Map external PORTAL port (e.g., 1111 set on Vast.ai) to Caddy's internal port (11111)
+      - "1111:11111"
+    volumes:
+      - /workspace:/workspace
+    environment:
+      # CRITICAL: Define PORTAL_CONFIG in Vast.ai UI/API
+      - PORTAL_CONFIG='{"version":2,"port":11111,"services":[{"name":"VNC","uri":"/vnc/","proto":"http","rewrite":true,"auth":true},{"name":"AppLogs","uri":"/logs/visomaster_app.log","auth":true},{"name":"VNCLogs","uri":"/logs/x11vnc.log","auth":true},{"name":"CaddyLogs","uri":"/logs/caddy.log","auth":true},{"name":"LogBrowse","uri":"/logs/","auth":true}]}'
+      - TZ=UTC
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all

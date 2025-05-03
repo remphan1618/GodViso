@@ -1,20 +1,18 @@
-# ALTERNATIVE docker-compose.yml (Portal Setup) - Located in 'alt/' folder
-# REFERENCE ONLY for Vast.ai settings.
+# SMALL ALT docker-compose.yml (Portal, Runtime Models + Assets) - REFERENCE ONLY
 version: '3.8'
 services:
-  visomaster_portal:
-    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:portal-latest # Use portal tag
-    container_name: visomaster_portal_container
+  visomaster_s_alt:
+    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:small-portal-latest
+    container_name: visomaster_s_alt_container
     restart: always
     ports:
       # Map external PORTAL port (e.g., 1111 set on Vast.ai) to Caddy's internal port (11111)
-      - "1111:11111" # Host Port (Set on Vast.ai) : Container Port (Caddy listens here)
+      - "1111:11111"
     volumes:
       - /workspace:/workspace
     environment:
-      # CRITICAL: Define PORTAL_CONFIG in Vast.ai UI/API. Structure matches Caddyfile/supervisord.
+      # CRITICAL: Define PORTAL_CONFIG in Vast.ai UI/API
       - PORTAL_CONFIG='{"version":2,"port":11111,"services":[{"name":"VNC","uri":"/vnc/","proto":"http","rewrite":true,"auth":true},{"name":"AppLogs","uri":"/logs/visomaster_app.log","auth":true},{"name":"VNCLogs","uri":"/logs/x11vnc.log","auth":true},{"name":"CaddyLogs","uri":"/logs/caddy.log","auth":true},{"name":"LogBrowse","uri":"/logs/","auth":true}]}'
-      # - OPEN_BUTTON_TOKEN=placeholder_token # Usually injected by Vast.ai
       - TZ=UTC
     deploy:
       resources:

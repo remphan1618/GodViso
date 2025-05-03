@@ -1,14 +1,14 @@
-# PRIMARY docker-compose.yml (REFERENCE ONLY for Vast.ai settings)
+# DEFAULT docker-compose.yml (VNC, Build-time Models) - REFERENCE ONLY
 version: '3.8'
 services:
-  visomaster:
-    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:latest # Use primary tag
-    container_name: visomaster_container
+  visomaster_default:
+    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:latest
+    container_name: visomaster_default_container
     restart: always
     ports:
       - "5901:5901" # VNC Port
     volumes:
-      - /workspace:/workspace # Use Vast.ai's persistent storage
+      - /workspace:/workspace
     environment:
       - TZ=UTC
     deploy:

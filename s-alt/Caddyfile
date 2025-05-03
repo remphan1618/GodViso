@@ -1,7 +1,5 @@
-# ALTERNATIVE Caddyfile (Portal Setup) - Located in 'alt/' folder
-# Content remains the same as previously generated.
-# Listens internally on port 11111, requires OPEN_BUTTON_TOKEN, proxies VNC, serves logs.
-# (Full Caddyfile content omitted for brevity - use the previous version)
+# SMALL ALT Caddyfile (Portal, Runtime Models + Assets)
+# Identical to alt/Caddyfile
 
 {
         http_port 11111
@@ -16,11 +14,13 @@
 :11111 {
         encode gzip
 
+        # Proxy VNC WebSocket connection
         route /vnc/* {
                 import auth
                 reverse_proxy 127.0.0.1:5901
         }
 
+        # Serve logs from the /var/log/portal directory
         route /logs/* {
                 import auth
                 uri strip_prefix /logs
@@ -30,11 +30,13 @@
                 }
         }
 
+        # Simple response for the root path
         route / {
                 import auth
-                respond "VisoMaster Instance Portal Active" 200
+                respond "VisoMaster Instance Portal Active (Small Alt Build)" 200
         }
 
+        # Log Caddy's own access logs
         log {
                 output file /var/log/portal/caddy_access.log
                 format json

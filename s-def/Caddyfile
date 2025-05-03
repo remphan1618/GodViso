@@ -1,0 +1,44 @@
+# SMALL DEFAULT Caddyfile (Now uses Portal)
+# Listens internally on port 11111
+
+{
+        http_port 11111
+        admin off
+}
+
+(auth) {
+        @forbidden not header Authorization "Bearer {env.OPEN_BUTTON_TOKEN}"
+        abort @forbidden
+}
+
+:11111 {
+        encode gzip
+
+        # Proxy VNC WebSocket connection
+        route /vnc/* {
+                import auth
+                reverse_proxy 127.0.0.1:5901
+        }
+
+        # Serve logs from the /var/log/portal directory
+        route /logs/* {
+                import auth
+                uri strip_prefix /logs
+                file_server {
+                        root /var/log/portal
+                        browse
+                }
+        }
+
+        # Simple response for the root path
+        route / {
+                import auth
+                respond "VisoMaster Instance Portal Active (Small Default Build)" 200
+        }
+
+        # Log Caddy's own access logs
+        log {
+                output file /var/log/portal/caddy_access.log
+                format json
+        }
+}

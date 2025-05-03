@@ -1,19 +1,22 @@
 # VisoMaster Deployment Guide: GitHub Actions -> DockerHub -> Vast.ai (Jupyter)
 
-**Current UTC Date/Time:** `2025-05-03 15:10:44`
+**Current UTC Date/Time:** `2025-05-03 19:55:41`
 **User:** `remphan1618`
 
-**Welcome!** This guide provides a comprehensive walkthrough for deploying the VisoMaster application using an automated pipeline. We'll go from your source code in GitHub, build a Docker image using GitHub Actions, push it to DockerHub, and finally run it on a Vast.ai instance with GPU support, specifically using their Jupyter Notebook launch environment.
+**Welcome!** This guide provides a comprehensive walkthrough for deploying the VisoMaster application using an automated pipeline. We'll go from your source code in GitHub, build a Docker image using **GitHub Actions runners**, push it to DockerHub, and finally run it on a Vast.ai instance with GPU support, specifically using their Jupyter Notebook launch environment.
 
-This guide covers **two main deployment options**:
-1.  **Primary:** Standard deployment with direct VNC access.
-2.  **Alternative (Portal):** Integrated deployment using Vast.ai's "Instance Portal" / "Open Button" feature for secure web-based access.
+This repository now offers **four distinct deployment configurations**, each in its own folder:
 
-This guide is designed for **beginners** with coding, Docker, and cloud platforms. We'll explain the concepts and steps clearly.
+1.  **`default/`:** Standard VNC access; Models included **during build**; Copies assets from local `dependencies/` folder. (Image Tag: `latest`)
+2.  **`alt/`:** Instance Portal access; Models included **during build**; Copies assets from local `dependencies/` folder. (Image Tag: `portal-latest`)
+3.  **`s-def/`:** **Instance Portal access**; Models, `ffmpeg.exe`, `ffplay.exe` downloaded **at runtime**. (Image Tag: `small-latest`) - *Note: Now uses Portal access.*
+4.  **`s-alt/`:** Instance Portal access; Models, `ffmpeg.exe`, `ffplay.exe` downloaded **at runtime**. (Image Tag: `small-portal-latest`)
 
-**The Goal:** To have a repeatable, automated way to get the VisoMaster application running in a cloud environment with the necessary GPU hardware, accessible via Vast.ai's Jupyter interface, with options for either direct VNC or a secure web portal.
+This guide is designed for **beginners** with coding, Docker, and cloud platforms.
 
-**Internal Guide:** Once your instance is running on Vast.ai (using either primary or portal setup), you'll find an interactive Jupyter Notebook named `Install_Guide.ipynb` inside the container. That notebook is your primary tool for **validating** the setup, **troubleshooting** issues, viewing **logs**, and performing **manual fixes** *after* launch. This document focuses on getting you *to* that point.
+**The Goal:** To have multiple, repeatable, automated ways to get VisoMaster running in the cloud with GPUs, offering choices between VNC/Portal access and build-time/runtime model/asset handling (to avoid Git LFS).
+
+**Internal Guide:** Regardless of the build option chosen, once your instance is running on Vast.ai, you'll find an interactive Jupyter Notebook named `Install_Guide.ipynb` inside the container (`/app/VisoMaster/`). Use this notebook for **validating** the setup, **troubleshooting**, viewing **logs**, and performing **manual fixes**.
 
 ---
 
@@ -21,54 +24,33 @@ This guide is designed for **beginners** with coding, Docker, and cloud platform
 
 1.  [Pipeline Overview](#1-pipeline-overview)
 2.  [Core Concepts Explained](#2-core-concepts-explained)
-    *   [Docker (Images vs. Containers)](#docker-images-vs-containers)
-    *   [Miniconda & Virtual Environments](#miniconda--virtual-environments)
-    *   [CUDA (Runtime vs. Drivers)](#cuda-runtime-vs-drivers)
-    *   [Vast.ai Basics (Instances, Jupyter, Storage, GPU, Portal)](#vastai-basics)
-    *   [GitHub Actions (CI/CD)](#github-actions-cicd)
-    *   [DockerHub (Registry)](#dockerhub-registry)
-    *   [Supervisor (Process Management)](#supervisor-process-management)
-    *   [VNC/GUI in Docker](#vncgui-in-docker)
+    *   [Common Concepts](#common-concepts)
+    *   [VNC / Window Manager Setup](#vnc--window-manager-setup)
     *   [Caddy (Web Server - for Portal)](#caddy-web-server---for-portal)
+    *   [Runtime Download (Entrypoint Script)](#runtime-download-entrypoint-script)
 3.  [Prerequisites](#3-prerequisites)
 4.  [Repository Structure](#4-repository-structure)
 5.  [Setup Steps (Common)](#5-setup-steps-common)
-    *   [Populating the `dependencies` Folder](#populating-the-dependencies-folder)
-    *   [Review `requirements.txt`](#review-requirementstxt)
-    *   [GitHub Secrets Configuration](#github-secrets-configuration)
-6.  **Option 1: Primary Deployment (Direct VNC)**
-    *   [Build Process (GitHub Actions - Primary)](#build-process-github-actions---primary)
-    *   [Launching on Vast.ai (Primary)](#launching-on-vastai-primary)
-    *   [Accessing (Primary - VNC & Jupyter)](#accessing-primary---vnc--jupyter)
-7.  **Option 2: Alternative Deployment (Instance Portal)**
-    *   [Understanding the `alt/` Folder](#understanding-the-alt-folder)
-    *   [Build Process (GitHub Actions - Portal)](#build-process-github-actions---portal)
-    *   [Launching on Vast.ai (Portal)](#launching-on-vastai-portal)
-    *   [Accessing (Portal - Open Button & Jupyter)](#accessing-portal---open-button--jupyter)
-8.  [Using the Internal `Install_Guide.ipynb`](#8-using-the-internal-install_guideipynb)
-9.  [Understanding the Configuration Files](#9-understanding-the-configuration-files)
-    *   [Primary Files (`Dockerfile`, `supervisord.conf`, `docker-compose.yml`, `.github/workflows/build-primary.yml`)](#primary-files)
-    *   [Alternative Portal Files (`alt/Dockerfile`, `alt/Caddyfile`, `alt/supervisord.conf`, `alt/docker-compose.yml`, `.github/workflows/build-alt-portal.yml`)](#alternative-portal-files)
-    *   [Shared Files (`Install_Guide.ipynb`, `requirements.txt`, `dependencies/`)](#shared-files)
-10. [Other Alternatives (Provisioning Script)](#10-other-alternatives-provisioning-script)
-11. [Logging & Troubleshooting](#11-logging--troubleshooting)
-    *   [GitHub Actions Logs](#github-actions-logs)
-    *   [DockerHub](#dockerhub)
-    *   [Vast.ai Instance Logs (UI Button)](#vastai-instance-logs-ui-button)
-    *   [Inside the Container (via `Install_Guide.ipynb`)](#inside-the-container-via-install_guideipynb)
-12. [Conclusion](#12-conclusion)
+6.  **Build & Deployment Options (Choose One)**
+    *   [Option 1: Default (`default/`) - VNC, Build-time Models/Assets](#option-1-default-default---vnc-build-time-modelsassets)
+    *   [Option 2: Alt (`alt/`) - Portal, Build-time Models/Assets](#option-2-alt-alt---portal-build-time-modelsassets)
+    *   [Option 3: Small Default (`s-def/`) - Portal, Runtime Models/Assets](#option-3-small-default-s-def---portal-runtime-modelsassets) <!-- CHANGED -->
+    *   [Option 4: Small Alt (`s-alt/`) - Portal, Runtime Models/Assets](#option-4-small-alt-s-alt---portal-runtime-modelsassets)
+7.  [Using the Internal `Install_Guide.ipynb`](#7-using-the-internal-install_guideipynb)
+8.  [Understanding the Configuration Files](#8-understanding-the-configuration-files)
+9.  [Logging & Troubleshooting](#9-logging--troubleshooting)
+10. [Conclusion](#10-conclusion)
 
 ---
 
 ## 1. Pipeline Overview
 
-This diagram shows how the pieces fit together (applies to both Primary and Portal options, differing mainly in build/runtime config):
-
+<!-- Mermaid diagram remains the same -->
 ```mermaid
 graph LR
-    A[1. Your Code (GitHub Repo)\n- VisoMaster Code\n- dependencies/\n- requirements.txt\n- Config Files (Primary OR Alt)\n- Workflows\n- Install_Guide.ipynb] --> B{2. GitHub Actions (Build)};
-    B -- Build Image --> C[3. DockerHub (Registry)\n- Stores your_username/visomaster:latest\n- OR your_username/visomaster:portal-latest];
-    C -- Pull Image --> D{4. Vast.ai Instance (Jupyter Launch)\n- Runs Container\n- Provides GPU\n- Uses /workspace\n- Access via Jupyter UI\n- Access via VNC (Primary) OR Portal (Alt)};
+    A[1. Your Code (GitHub Repo)\n- VisoMaster Code\n- dependencies/ (Optional, for default/alt)\n- requirements.txt\n- Install_Guide.ipynb\n- Config Folders (default/, alt/, s-def/, s-alt/)\n- Workflows] --> B{2. GitHub Actions Runner (Build)};
+    B -- Build Image (Select Workflow) --> C[3. DockerHub (Registry)\n- Stores your_username/visomaster:<tag>];
+    C -- Pull Image --> D{4. Vast.ai Instance (Jupyter Launch)\n- Runs Container\n- Provides GPU\n- Uses /workspace\n- Access via Jupyter UI\n- Access via VNC or Portal};
     D -- Access --> E[5. User Interaction\n- Connect via VNC/Portal\n- Use Jupyter Interface\n- Run Install_Guide.ipynb];
 
     style A fill:#f9f,stroke:#333,stroke-width:2px
@@ -78,210 +60,212 @@ graph LR
     style E fill:#cfc,stroke:#333,stroke-width:2px
 ```
 
-*   **Source (GitHub):** You store your application code (`VisoMaster`), required assets (`dependencies/`), Python packages (`requirements.txt`), the internal guide (`Install_Guide.ipynb`), and the configuration files. You choose *either* the primary set (`Dockerfile`, `supervisord.conf`, `build-primary.yml`) *or* the alternative portal set (`alt/Dockerfile`, `alt/supervisord.conf`, `alt/Caddyfile`, `build-alt-portal.yml`).
-*   **Build (GitHub Actions):** Based on which workflow runs (`build-primary.yml` or `build-alt-portal.yml`), the corresponding Dockerfile (`Dockerfile` or `alt/Dockerfile`) is used to build the image.
-*   **Artifact (DockerHub):** The image is pushed with a relevant tag (`latest` for primary, `portal-latest` for the alternative).
-*   **Deployment & Runtime (Vast.ai):** You launch a Vast.ai instance using the Jupyter template, specifying the correct Docker image tag (`latest` or `portal-latest`) and configuring ports/environment variables according to the chosen option (direct VNC port map or Caddy portal port map + `PORTAL_CONFIG`).
-*   **Interaction:** You access the running application via direct VNC (Primary) or the secure web portal (Alternative). You can *always* access the container's environment, including the `Install_Guide.ipynb`, via the Vast.ai Jupyter interface.
+*   **Source (GitHub):** Contains application code, shared files, and four distinct configuration sets in the `default/`, `alt/`, `s-def/`, and `s-alt/` folders. Each set has its own Dockerfile and supporting configs. Four workflows exist in `.github/workflows/` to build each configuration. The local `dependencies/` folder is needed only if building the `default` or `alt` configurations.
+*   **Build (GitHub Actions Runner):** You trigger one of the four workflows (either automatically via push for `default`, or manually for the others). A GitHub runner builds the Docker image using the `Dockerfile` from the corresponding configuration folder.
+*   **Artifact (DockerHub):** The image is pushed with a tag specific to the configuration (e.g., `latest`, `portal-latest`, `small-latest`, `small-portal-latest`).
+*   **Deployment & Runtime (Vast.ai):** You launch a Vast.ai instance using the Jupyter template, selecting the desired image tag and configuring ports/environment variables according to the chosen configuration (VNC port map or Portal port map + `PORTAL_CONFIG`).
+*   **Interaction:** Access via VNC/Portal and the standard Jupyter interface.
 
 ---
 
 ## 2. Core Concepts Explained
 
-*   **Docker (Images vs. Containers):** Blueprint vs. running instance. Packages app + dependencies. Ensures consistency.
-*   **Miniconda & Virtual Environments:** Manages isolated Python environments (`visomaster`) and complex dependencies (like CUDA via Conda).
-*   **CUDA (Runtime vs. Drivers):** Runtime/Toolkit (installed in Docker via Conda) needed by the app; Drivers (on Vast.ai host) talk to hardware.
-*   **Vast.ai Basics:**
-    *   **Instances:** Rentable VMs/containers with GPUs.
-    *   **Jupyter Launch Mode:** Provides web-based JupyterLab access (terminal, files, notebooks).
-    *   **`/workspace` Storage:** Persistent storage inside the container.
-    *   **GPU:** Hardware acceleration provided by Vast.ai.
-    *   **Instance Portal / Open Button:** Optional secure web dashboard (uses Caddy) for accessing services (VNC, logs) via a token. See Alternative setup. (Context: [Vast.ai Base Images](https://github.com/vast-ai/base-image))
-*   **GitHub Actions (CI/CD):** Automates build/push process via workflows (`.yml` files).
-*   **DockerHub (Registry):** Stores and distributes Docker images.
-*   **Supervisor (Process Management):** Runs multiple services (VNC, app, Caddy) inside the container. Configured via `supervisord.conf`.
-*   **VNC/GUI in Docker:** Uses Xvfb (virtual display), Fluxbox (window manager), x11vnc (server) for remote GUI access.
-*   **Caddy (Web Server - for Portal):** Used in the alternative setup to provide secure HTTPS proxying for VNC and log access via the web portal. Configured via `alt/Caddyfile`. (Docs: [Caddy](https://caddyserver.com/docs/))
+<!-- Sections remain the same -->
+*   ### Common Concepts
+    *   **Docker (Images vs. Containers):** Blueprint vs. running instance.
+    *   **Miniconda & Virtual Environments:** Isolated `visomaster` environment.
+    *   **CUDA (Runtime vs. Drivers):** Runtime/Toolkit in Docker; Drivers on Vast.ai host.
+    *   **Vast.ai Basics:** Instances, Jupyter Launch, `/workspace` storage, GPU access.
+    *   **GitHub Actions (CI/CD & Runners):** Automation via workflows executed on GitHub-hosted VMs.
+    *   **DockerHub (Registry):** Stores Docker images.
+    *   **Supervisor (Process Management):** Manages services (VNC, app, Caddy) via `.conf` files.
+
+*   ### VNC / Window Manager Setup
+    *   **Purpose:** To provide a graphical desktop environment accessible remotely via VNC, suitable for running GUI applications within the container.
+    *   **Components Used:**
+        *   `Xvfb`: Creates a virtual, in-memory X display server (no physical screen needed).
+        *   `x11vnc`: A VNC server that efficiently shares the existing X session created by Xvfb.
+        *   `Fluxbox`: A lightweight, fast, and stable window manager. It provides basic window decorations and management without consuming significant resources, making it ideal for containers.
+    *   **Why this setup?** It's a standard, resource-efficient, and reliable combination. `Xvfb` + `x11vnc` is simpler for sharing one virtual display than servers like TigerVNC which manage their own sessions. `Fluxbox` provides essential WM functions without the bloat of full desktop environments (like Gnome, KDE, XFCE), saving RAM and CPU.
+    *   **Alternatives:** `Openbox` is a very similar lightweight window manager and a good alternative to Fluxbox. While other lightweight WMs exist (IceWM, JWM), Fluxbox/Openbox offer a great balance of features, stability, and low resource use.
+
+*   ### Caddy (Web Server - for Portal)
+    *   Used in the `alt/`, `s-def/`, and `s-alt/` configurations. <!-- CHANGED -->
+    *   Acts as a reverse proxy, providing secure (HTTPS, via Vast.ai's frontend) web access to internal services like VNC and logs.
+    *   Configured via `Caddyfile`. Authenticates users via the `OPEN_BUTTON_TOKEN` provided by Vast.ai.
+
+*   ### Runtime Download (Entrypoint Script)
+    *   Used in the `s-def/` and `s-alt/` configurations (via `download_and_start.sh`).
+    *   The `ENTRYPOINT` of the Docker container is set to this script.
+    *   When the container starts, the script runs *first*. It checks if models (`/app/models/.downloaded`) and assets (`/app/dependencies/ffmpeg.exe`, `/app/dependencies/ffplay.exe`) exist.
+    *   If items are missing, it runs the corresponding download commands (`download_models.py` or `wget`).
+    *   After ensuring models/assets are present, it uses `exec` to replace itself with the `supervisord` process, which then starts the actual application and VNC/Caddy services.
+    *   **Benefit:** Creates smaller Docker images, avoids Git LFS, reduces build time and storage.
+    *   **Trade-off:** Increases the startup time for the *first* run of the container on Vast.ai.
 
 ---
 
 ## 3. Prerequisites
 
-(Same as before: Git, GitHub account, Docker Desktop (optional), DockerHub account, Vast.ai account, VisoMaster code, VisoMaster assets)
+<!-- Section remains the same -->
+1.  **Git:** Installed locally.
+2.  **GitHub Account:** To host the repository and use Actions.
+3.  **Docker Desktop (Optional):** Useful for local testing but not required for the pipeline.
+4.  **DockerHub Account:** To store the built Docker images.
+5.  **Vast.ai Account:** With credits to rent GPU instances.
+6.  **VisoMaster Application Code:** The Python scripts and related files for VisoMaster.
+7.  **VisoMaster Assets (Optional for `s-def`/`s-alt`):** Models, `ffmpeg.exe`, `ffplay.exe`, etc. If building `default` or `alt`, these must be downloaded locally first.
 
 ---
 
 ## 4. Repository Structure
 
-Organize your repository as follows:
-
+<!-- Structure remains the same -->
 ```
 your-repo-name/
-├── VisoMaster/             # VisoMaster application code
-├── dependencies/           # User-provided assets
-├── alt/                    # Folder for Portal Alternative Set
-│   ├── Dockerfile          # Portal Dockerfile
-│   ├── Caddyfile           # Portal Caddy config
-│   ├── supervisord.conf    # Portal supervisord config
-│   └── docker-compose.yml  # Portal compose (reference)
+├── VisoMaster/             # Application code (main.py, download_models.py, etc.)
+├── dependencies/           # User assets (ONLY needed locally for default/alt builds)
+├── default/                # Config: Default (VNC, Build-time)
+│   ├── Dockerfile
+│   ├── supervisord.conf
+│   └── docker-compose.yml
+├── alt/                    # Config: Alt (Portal, Build-time)
+│   ├── Dockerfile
+│   ├── Caddyfile
+│   ├── supervisord.conf
+│   └── docker-compose.yml
+├── s-def/                  # Config: Small "Default" (NOW PORTAL, Runtime)
+│   ├── Dockerfile
+│   ├── Caddyfile           # <-- ADDED
+│   ├── supervisord.conf    # <-- UPDATED
+│   ├── download_and_start.sh
+│   └── docker-compose.yml  # <-- UPDATED (Ref)
+├── s-alt/                  # Config: Small Alt (Portal, Runtime)
+│   ├── Dockerfile
+│   ├── Caddyfile
+│   ├── supervisord.conf
+│   ├── download_and_start.sh
+│   └── docker-compose.yml
 ├── .github/
-│   └── workflows/
-│       ├── build-primary.yml   # Primary workflow
-│       └── build-alt-portal.yml # Portal workflow
-├── Dockerfile              # Primary Dockerfile
-├── supervisord.conf        # Primary supervisord config
-├── docker-compose.yml      # Primary compose (reference)
-├── requirements.txt        # Python dependencies
-├── Install_Guide.ipynb     # Internal guide (used by both)
-├── README.md               # This file
-└── provisioning_script.sh  # Example provisioning script (if used)
+│   └── workflows/          # GitHub Actions build workflows
+│       ├── build-default.yml
+│       ├── build-alt.yml
+│       ├── build-s-def.yml
+│       └── build-s-alt.yml
+├── requirements.txt        # Shared Python dependencies
+├── Install_Guide.ipynb     # Shared Internal guide / Diagnostics notebook
+└── README.md               # This file
 ```
 
 ---
 
 ## 5. Setup Steps (Common)
 
-These steps apply regardless of whether you choose the Primary or Portal deployment.
-
-1.  **Clone Your Repo:** Clone your GitHub repository locally.
-2.  **Add VisoMaster Code:** Copy the VisoMaster application code into the `VisoMaster/` directory.
-3.  **Add Config Files:** Copy all the configuration files (`Dockerfile`, `supervisord.conf`, `docker-compose.yml`, `Install_Guide.ipynb`, `README.md`, `requirements.txt`, `provisioning_script.sh`, the `.github/workflows` files, and the entire `alt/` directory) into your repository, matching the structure above.
-4.  **Populate `dependencies/` Folder:**
-    *   **CRUCIAL:** Download necessary assets (models, data files *excluding* source code zip) from VisoMaster asset releases (e.g., `https://github.com/visomaster/visomaster-assets/releases/tag/v0.1.0_dp`).
-    *   Place these downloaded files directly inside the `dependencies/` folder. Both `Dockerfile` and `alt/Dockerfile` copy from this location.
-5.  **Review `requirements.txt`:** Ensure it's the correct file from VisoMaster, as it's used by both Dockerfiles with specific index URLs.
-6.  **GitHub Secrets Configuration:**
-    *   Go to your GitHub repo > Settings > Secrets and variables > Actions.
-    *   Create `DOCKERHUB_USERNAME` (your DockerHub username).
-    *   Create `DOCKERHUB_TOKEN` (a DockerHub Access Token with Read/Write permissions).
+<!-- Section remains the same -->
+1.  **Clone Your Repo:** `git clone <your-repo-url>`
+2.  **Add VisoMaster Code:** Place your application's Python scripts (e.g., `main.py`, `download_models.py`) inside the `VisoMaster/` folder.
+3.  **Add Configuration Files:** Copy *all* provided configuration files and folders (`default/`, `alt/`, `s-def/`, `s-alt/`, `requirements.txt`, `Install_Guide.ipynb`, `README.md`, `.github/`) into your repository, matching the structure above.
+4.  **Populate `dependencies/` (Conditional):**
+    *   If you plan to build the `default` or `alt` configurations: Download required assets (like `ffmpeg.exe`, `ffplay.exe`, any *non*-model files needed at runtime) and place them in the `dependencies/` folder at the repository root.
+    *   If you only plan to build `s-def` or `s-alt`: This folder can remain empty, as assets will be downloaded by the runtime script.
+5.  **Review `requirements.txt`:** Ensure all necessary Python packages are listed.
+6.  **GitHub Secrets:** In your GitHub repository settings (`Settings` > `Secrets and variables` > `Actions`), create two repository secrets:
+    *   `DOCKERHUB_USERNAME`: Your Docker Hub username.
+    *   `DOCKERHUB_TOKEN`: A Docker Hub access token (create one at [hub.docker.com](https://hub.docker.com/) under Account Settings > Security).
 7.  **Commit and Push:**
     ```bash
     git add .
-    git commit -m "Setup VisoMaster deployment files (primary and alt)"
+    git commit -m "Initial setup / Update s-def to use Portal"
     git push origin main
     ```
 
 ---
 
-## 6. Option 1: Primary Deployment (Direct VNC)
+## 6. Build & Deployment Options (Choose One)
 
-This is the standard setup providing direct VNC access.
+Select the option that best suits your needs.
 
-*   ### Build Process (GitHub Actions - Primary)
-    *   Pushing to the `main` branch triggers the `.github/workflows/build-primary.yml` workflow.
-    *   This uses the root `Dockerfile` to build the image.
-    *   It pushes the image to DockerHub as `your_dockerhub_username/visomaster:latest` and `your_dockerhub_username/visomaster:<commit-sha>`.
-    *   Monitor progress in the "Actions" tab on GitHub.
+*   ### Option 1: Default (`default/`) - VNC, Build-time Models/Assets
+    *   **Characteristics:** Standard VNC access. Models included during build. Other assets copied from local `dependencies/` during build. Larger image, faster startup.
+    *   **Build:** Triggered automatically on push to `main` by `.github/workflows/build-default.yml`. Builds from `default/Dockerfile`. Pushes tag `latest` and `<sha>`. **Requires local `dependencies/` folder to be populated.**
+    *   **Vast.ai Launch:**
+        *   Image: `your_dockerhub_username/visomaster:latest`
+        *   Template: Jupyter Notebook
+        *   Ports: Map Host Port `5901` to Container Port `5901`.
+    *   **Access:** VNC Client (`<IP>:<HostPort>`), Jupyter Button.
 
-*   ### Launching on Vast.ai (Primary)
-    1.  **Go to Vast.ai Create/Templates.**
-    2.  **Choose Template:** Select "Jupyter Notebook + Persistent /workspace".
-    3.  **Docker Image:** Enter `your_dockerhub_username/visomaster:latest`.
-    4.  **GPU:** Select a suitable GPU.
-    5.  **Storage:** Allocate disk space.
-    6.  **Port Mapping:** Map Host Port `5901` (or another available port) to Container Port `5901`. Note the assigned Host Port.
-    7.  **Environment Variables:** Add any needed by VisoMaster.
-    8.  **Review and Launch.** Wait for the instance status to become "Running".
-
-*   ### Accessing (Primary - VNC & Jupyter)
-    1.  **VNC:** Use a VNC client to connect to `<Instance_IP_Address>:<VNC_Host_Port>` (the host port you noted from the mapping).
-    2.  **Jupyter:** Click the "Jupyter" or "Open" button on the Vast.ai instance page to access the JupyterLab interface (files, terminal, notebooks).
-
----
-
-## 7. Option 2: Alternative Deployment (Instance Portal)
-
-This setup uses Vast.ai's integrated web portal for secure access.
-
-*   ### Understanding the `alt/` Folder
-    *   This folder contains a *complete set* of configuration files designed to work together for the portal setup.
-    *   `alt/Dockerfile`: Installs Caddy webserver.
-    *   `alt/Caddyfile`: Configures Caddy for secure proxying.
-    *   `alt/supervisord.conf`: Runs Caddy, VNC (localhost only), and the app, logging to `/var/log/portal`.
-
-*   ### Build Process (GitHub Actions - Portal)
-    *   This build is **triggered manually**.
-    *   Go to the "Actions" tab on GitHub.
-    *   Select the "Build and Push VisoMaster ALT-PORTAL Docker Image" workflow from the list on the left.
-    *   Click the "Run workflow" button (usually requires selecting the branch, typically `main`).
-    *   This workflow (`.github/workflows/build-alt-portal.yml`) uses `alt/Dockerfile` to build the portal-enabled image.
-    *   It pushes the image to DockerHub as `your_dockerhub_username/visomaster:portal-latest` and `your_dockerhub_username/visomaster:portal-<commit-sha>`.
-
-*   ### Launching on Vast.ai (Portal)
-    1.  **Go to Vast.ai Create/Templates.**
-    2.  **Choose Template:** Select "Jupyter Notebook + Persistent /workspace".
-    3.  **Docker Image:** Enter `your_dockerhub_username/visomaster:portal-latest` (use the specific portal tag).
-    4.  **GPU:** Select a suitable GPU.
-    5.  **Storage:** Allocate disk space.
-    6.  **Port Mapping:** Map a Host Port (e.g., 1111, Vast.ai will assign one) to Container Port **`11111`** (the internal Caddy port). **DO NOT map port 5901 directly.**
-    7.  **Environment Variables:**
-        *   **CRITICAL:** Add a variable named `PORTAL_CONFIG`.
-        *   Paste the following JSON string as its value (ensure it's exactly copied):
+*   ### Option 2: Alt (`alt/`) - Portal, Build-time Models/Assets
+    *   **Characteristics:** Secure web portal access. Models included during build. Other assets copied from local `dependencies/` during build. Larger image, faster startup.
+    *   **Build:** Trigger **manually** via GitHub Actions UI (`Actions` tab > `Build ALT (Portal) VisoMaster Image` > `Run workflow`). Builds from `alt/Dockerfile`. Pushes tag `portal-latest` and `portal-<sha>`. **Requires local `dependencies/` folder to be populated.**
+    *   **Vast.ai Launch:**
+        *   Image: `your_dockerhub_username/visomaster:portal-latest`
+        *   Template: Jupyter Notebook
+        *   Ports: Map Host Port `1111` (or your choice) to Container Port `11111`. **Do NOT map 5901.**
+        *   Environment: Set `PORTAL_CONFIG` variable. Copy the JSON string below:
             ```json
             {"version":2,"port":11111,"services":[{"name":"VNC","uri":"/vnc/","proto":"http","rewrite":true,"auth":true},{"name":"AppLogs","uri":"/logs/visomaster_app.log","auth":true},{"name":"VNCLogs","uri":"/logs/x11vnc.log","auth":true},{"name":"CaddyLogs","uri":"/logs/caddy.log","auth":true},{"name":"LogBrowse","uri":"/logs/","auth":true}]}
             ```
-        *   Add any other variables needed by VisoMaster.
-    8.  **Review and Launch.** Wait for the instance status to become "Running".
+    *   **Access:** Vast.ai "Open" Button (Portal), Jupyter Button.
 
-*   ### Accessing (Portal - Open Button & Jupyter)
-    1.  **Portal ("Open" Button):** Click the main "Open" button on the Vast.ai instance page. This securely connects you to the Caddy web portal running inside the container. Use the links ("VNC", "AppLogs", etc.) provided within the portal interface.
-    2.  **Jupyter:** Click the separate "Jupyter" button/link on the Vast.ai instance page to access the standard JupyterLab interface (files, terminal, notebooks).
+*   ### Option 3: Small Default (`s-def/`) - Portal, Runtime Models/Assets <!-- CHANGED -->
+    *   **Characteristics:** **Secure web portal access.** Models, `ffmpeg.exe`, `ffplay.exe` downloaded on first start. Smaller image, slower first startup. **Does not require local `dependencies/` folder.** <!-- CHANGED -->
+    *   **Build:** Trigger **manually** via GitHub Actions UI (`Actions` tab > `Build SMALL DEFAULT VisoMaster Image` > `Run workflow`). Builds from `s-def/Dockerfile`. Pushes tag `small-latest` and `small-<sha>`.
+    *   **Vast.ai Launch:**
+        *   Image: `your_dockerhub_username/visomaster:small-latest`
+        *   Template: Jupyter Notebook
+        *   Ports: Map Host Port `1111` (or your choice) to Container Port `11111`. **Do NOT map 5901.** <!-- CHANGED -->
+        *   Environment: Set `PORTAL_CONFIG` variable. Copy the JSON string below: <!-- CHANGED -->
+            ```json
+            {"version":2,"port":11111,"services":[{"name":"VNC","uri":"/vnc/","proto":"http","rewrite":true,"auth":true},{"name":"AppLogs","uri":"/logs/visomaster_app.log","auth":true},{"name":"VNCLogs","uri":"/logs/x11vnc.log","auth":true},{"name":"CaddyLogs","uri":"/logs/caddy.log","auth":true},{"name":"LogBrowse","uri":"/logs/","auth":true}]}
+            ```
+    *   **Access:** Vast.ai "Open" Button (Portal), Jupyter Button. (Allow extra time on first launch for downloads). <!-- CHANGED -->
 
----
-
-## 8. Using the Internal `Install_Guide.ipynb`
-
-*   **Access:** Open the Jupyter interface (via the "Jupyter" button on Vast.ai, works for both Primary and Portal setups). Navigate to `/app/VisoMaster/` and open `Install_Guide.ipynb`.
-*   **Purpose:** Your essential **in-container** tool for:
-    *   **Validation:** Run checks (Shift+Enter) to verify setup (Conda, CUDA, Python, packages, GPU, services).
-    *   **Troubleshooting:** View logs, restart services (`supervisorctl restart ...`).
-    *   **Manual Fixes:** Copy/paste commands into a Jupyter terminal if automated build steps failed.
-*   **Log Locations:** The notebook helps view logs. Note that for the Portal setup, application and VNC logs are in `/var/log/portal/`, while for the Primary setup, they are in `/var/log/supervisor/`. The notebook should guide you.
-
----
-
-## 9. Understanding the Configuration Files
-
-*   ### Primary Files
-    *   `Dockerfile`: Builds standard image (Conda, CUDA, GUI tools, app, VNC port 5901).
-    *   `supervisord.conf`: Runs VNC (public), app. Logs to `/var/log/supervisor/`.
-    *   `docker-compose.yml`: Reference for VNC port map, GPU, volume.
-    *   `.github/workflows/build-primary.yml`: Builds primary image on push to `main`, tags `latest`.
-
-*   ### Alternative Portal Files (`alt/`)
-    *   `alt/Dockerfile`: Builds portal image (adds Caddy install).
-    *   `alt/Caddyfile`: Configures Caddy (listens 11111, auth, proxies VNC/logs).
-    *   `alt/supervisord.conf`: Runs Caddy, VNC (localhost), app. Logs to `/var/log/portal/`.
-    *   `alt/docker-compose.yml`: Reference for Caddy port map (`Host:11111`), `PORTAL_CONFIG` variable.
-    *   `.github/workflows/build-alt-portal.yml`: Builds portal image manually (`workflow_dispatch`), tags `portal-latest`.
-
-*   ### Shared Files
-    *   `Install_Guide.ipynb`: Internal validation/troubleshooting notebook (used by both setups).
-    *   `requirements.txt`: Python dependencies (used by both Dockerfiles).
-    *   `dependencies/`: Folder for assets (used by both Dockerfiles).
-    *   `VisoMaster/`: Application code.
+*   ### Option 4: Small Alt (`s-alt/`) - Portal, Runtime Models/Assets
+    *   **Characteristics:** Secure web portal access. Models, `ffmpeg.exe`, `ffplay.exe` downloaded on first start. Smaller image, slower first startup. **Does not require local `dependencies/` folder.**
+    *   **Build:** Trigger **manually** via GitHub Actions UI (`Actions` tab > `Build SMALL ALT (Portal) VisoMaster Image` > `Run workflow`). Builds from `s-alt/Dockerfile`. Pushes tag `small-portal-latest` and `small-portal-<sha>`.
+    *   **Vast.ai Launch:**
+        *   Image: `your_dockerhub_username/visomaster:small-portal-latest`
+        *   Template: Jupyter Notebook
+        *   Ports: Map Host Port `1111` (or your choice) to Container Port `11111`. **Do NOT map 5901.**
+        *   Environment: Set `PORTAL_CONFIG` variable. Copy the JSON string below:
+            ```json
+            {"version":2,"port":11111,"services":[{"name":"VNC","uri":"/vnc/","proto":"http","rewrite":true,"auth":true},{"name":"AppLogs","uri":"/logs/visomaster_app.log","auth":true},{"name":"VNCLogs","uri":"/logs/x11vnc.log","auth":true},{"name":"CaddyLogs","uri":"/logs/caddy.log","auth":true},{"name":"LogBrowse","uri":"/logs/","auth":true}]}
+            ```
+    *   **Access:** Vast.ai "Open" Button (Portal), Jupyter Button. (Allow extra time on first launch for downloads).
 
 ---
 
-## 10. Other Alternatives (Provisioning Script)
+## 7. Using the Internal `Install_Guide.ipynb`
 
-*   **Strategy:** Use Vast.ai's `PROVISIONING_SCRIPT` environment variable to run a script (like `provisioning_script.sh`) *after* container start but *before* `supervisord`.
-*   **Use Case:** Download large models at instance startup instead of during Docker build.
-*   **Pros:** Smaller image, faster builds/pushes.
-*   **Cons:** Slower instance startup, requires instance internet, potential runtime download failures.
-*   **Implementation:** Remove model download `RUN` command from `Dockerfile` (or `alt/Dockerfile`). Set `PROVISIONING_SCRIPT` in Vast.ai launch config (either URL to script or embed script content).
+<!-- Section remains the same -->
+*   **Access:** Available via the Jupyter Button on Vast.ai for *all* configurations. Navigate to `/app/VisoMaster/` and open the notebook.
+*   **Purpose:** Validate setup, check GPU, view logs (check `/var/log/supervisor/` or `/var/log/portal/`), check service status (`supervisorctl status`), troubleshoot, run manual fixes. Essential post-launch tool.
 
 ---
 
-## 11. Logging & Troubleshooting
+## 8. Understanding the Configuration Files
 
-*   **GitHub Actions Logs:** Check build failures in the "Actions" tab on GitHub.
-*   **DockerHub:** Verify image tags (`latest` or `portal-latest`) exist after successful builds.
-*   **Vast.ai Instance Logs (UI Button):** Check initial startup errors (image pull, Docker errors, provisioning script output).
-*   **Inside the Container (via `Install_Guide.ipynb`):** **PRIMARY tool** post-launch. Use the notebook in the Jupyter interface to check service status (`supervisorctl status`) and view detailed logs (`/var/log/supervisor/*` for primary, `/var/log/portal/*` for portal).
+<!-- Section remains the same -->
+*   Each folder (`default/`, `alt/`, `s-def/`, `s-alt/`) contains the specific `Dockerfile`, `supervisord.conf`, and potentially `Caddyfile` or `download_and_start.sh` for that configuration.
+*   The corresponding workflow file in `.github/workflows/` builds the image from that folder's Dockerfile and applies the correct Docker Hub tag.
+*   Shared files (`requirements.txt`, `Install_Guide.ipynb`, `VisoMaster/`) are used by all builds.
 
 ---
 
-## 12. Conclusion
+## 9. Logging & Troubleshooting
 
-This repository provides two deployment options for VisoMaster on Vast.ai: a standard direct VNC setup (Primary) and a secure web portal setup (Alternative). Follow the steps for your chosen option, ensuring you build the correct image and configure Vast.ai accordingly. Use the `Install_Guide.ipynb` within the running instance for validation and troubleshooting. Good luck!
+<!-- Section remains the same, log paths are now consistent for portal builds -->
+*   **GitHub Actions Logs:** Check build failures on the runner. Look for errors during `apt-get`, `conda install`, `pip install`, `COPY`, or model download steps. Check disk space cleanup effectiveness.
+*   **DockerHub:** Verify image tags exist after a successful build workflow.
+*   **Vast.ai Instance Logs (UI Button):** Check initial container startup errors. For `s-def`/`s-alt`, look for output from the `download_and_start.sh` script (download progress/errors). Check `supervisord` startup messages.
+*   **Inside Container (`Install_Guide.ipynb`):** Use the notebook via the Jupyter interface for detailed diagnostics:
+    *   Run `supervisorctl status` to see if all services (app, vnc, caddy, etc.) are `RUNNING`.
+    *   Check logs in `/var/log/supervisor/` (core supervisor/xvfb/fluxbox logs) and `/var/log/portal/` (app, vnc, caddy logs for portal builds). Pay attention to `visomaster_app.log`, `visomaster_app_err.log`, and logs for VNC/Caddy.
+    *   Verify GPU detection.
+    *   Check file paths and existence of models/assets.
+
+---
+
+## 10. Conclusion
+
+This repository now offers four distinct deployment paths for VisoMaster. The `default/` build provides direct VNC access, while `alt/`, `s-def/`, and `s-alt/` provide secure Instance Portal access. The `s-def/` and `s-alt/` configurations additionally download models and assets at runtime to avoid Git LFS and reduce image size. Choose the configuration that best fits your needs, follow the launch instructions carefully, and utilize the `Install_Guide.ipynb` for post-launch verification and troubleshooting.

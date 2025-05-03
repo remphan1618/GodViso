@@ -1,0 +1,24 @@
+# SMALL DEFAULT docker-compose.yml (Now uses Portal, Runtime Models + Assets) - REFERENCE ONLY
+version: '3.8'
+services:
+  visomaster_s_def:
+    # Image tag remains 'small-latest' for now, but represents a portal build
+    image: ${DOCKERHUB_USERNAME:-your_dockerhub_username}/visomaster:small-latest
+    container_name: visomaster_s_def_container
+    restart: always
+    ports:
+      # Map external PORTAL port (e.g., 1111 set on Vast.ai) to Caddy's internal port (11111)
+      - "1111:11111"
+    volumes:
+      - /workspace:/workspace
+    environment:
+      # CRITICAL: Add PORTAL_CONFIG environment variable
+      - PORTAL_CONFIG='{"version":2,"port":11111,"services":[{"name":"VNC","uri":"/vnc/","proto":"http","rewrite":true,"auth":true},{"name":"AppLogs","uri":"/logs/visomaster_app.log","auth":true},{"name":"VNCLogs","uri":"/logs/x11vnc.log","auth":true},{"name":"CaddyLogs","uri":"/logs/caddy.log","auth":true},{"name":"LogBrowse","uri":"/logs/","auth":true}]}'
+      - TZ=UTC
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all
