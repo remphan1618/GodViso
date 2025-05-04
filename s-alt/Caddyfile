@@ -1,47 +1,42 @@
 {
-	http_port {$CADDY_PORT:-11111}
-	admin off
-	log {
-		output stdout
-		level INFO
-	}
+    # Global options block
+    # admin off
 }
 
-:{$CADDY_PORT} {
-	# --- KasmVNC GUI Proxy ---
-	handle_path /gui/* {
-		reverse_proxy localhost:{$KASM_VNC_INTERNAL_PORT:-8443} {
-			header_up X-Forwarded-Host {host}
-			header_up X-Forwarded-Proto {scheme}
-		}
-	}
+:11111 { # Listen on port 11111
 
-	# --- Log File Access ---
-	handle_path /logs/* {
-		file_server browse {
-			root /app/logs  # Changed path
-		}
-	}
+    # Serve the static portal page
+    handle_path / {
+        root * /app
+        file_server browse {
+            index index.html # Serve index.html at the root
+        }
+    }
 
-	# --- Root/Fallback Page ---
-	handle {
-		respond * 200 {
-			body `<!DOCTYPE html>
-<html>
-<head><title>VisoMaster Portal (s-alt)</title></head>
-<body>
-<h1>VisoMaster Portal (s-alt)</h1>
-<ul>
-	<li><a href="/gui/">Access VisoMaster GUI (KasmVNC)</a></li>
-	<li><a href="/logs/">Browse Application Logs</a></li>
-</ul>
-</body>
-</html>`
-			headers {
-				Content-Type text/html
-			}
-		}
-	}
+    # Reverse proxy for KasmVNC GUI (running on 8443 internally)
+    reverse_proxy /gui/* localhost:8443 {
+        # Headers might be needed for KasmVNC websockets/proxying
+        header_up Host {http.request.host}
+        header_up X-Real-IP {http.request.remote.addr}
+        header_up X-Forwarded-For {http.request.remote.addr}
+        header_up X-Forwarded-Proto {http.request.scheme}
+    }
 
-	log
+    # Serve logs directory
+    handle_path /logs/* {
+        root * /app/logs
+        file_server browse
+    }
+
+    # Enable gzip compression
+    encode gzip
+
+    # Log configuration
+    log {
+        output file /app/logs/caddy_access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        level INFO
+    }
 }

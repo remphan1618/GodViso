@@ -1,0 +1,46 @@
+{
+    # Global options block (optional)
+    # admin off # Disable admin API if not needed
+    # log {
+    #    output file /app/logs/caddy_access.log
+    #    level INFO
+    # }
+}
+
+:11111 { # Listen on port 11111
+
+    # Reverse proxy for VisoMaster (running on 8080 internally)
+    reverse_proxy /visomaster/* localhost:8080
+
+    # Reverse proxy for Jupyter Lab (running on 8888 internally)
+    reverse_proxy /jupyter/* localhost:8888 {
+        # Required for WebSocket support in Jupyter
+        header_up Host {http.request.host}
+        header_up X-Real-IP {http.request.remote.addr}
+        header_up X-Forwarded-For {http.request.remote.addr}
+        header_up X-Forwarded-Proto {http.request.scheme}
+    }
+
+    # Serve logs directory
+    handle_path /logs/* {
+        root * /app/logs
+        file_server browse
+    }
+
+    # Optional: Basic landing page (if needed)
+    # handle / {
+    #    respond "VisoMaster Services Available: /visomaster/, /jupyter/, /logs/" 200
+    # }
+
+    # Enable gzip compression
+    encode gzip
+
+    # Log configuration
+    log {
+        output file /app/logs/caddy_access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        level INFO
+    }
+}

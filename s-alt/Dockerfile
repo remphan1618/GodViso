@@ -83,8 +83,7 @@ ENV DEPS_DIR $APP_DIR/dependencies
 ENV LOGS_DIR $APP_DIR/logs
 RUN mkdir -p $VISOMASTER_MODELS_DIR $DEPS_DIR $LOGS_DIR
 
-# Copy configuration files and entrypoint script
-# **MODIFIED LINE BELOW**
+# Copy configuration files and entrypoint script from ROOT
 COPY download_and_start.sh /app/download_and_start.sh
 COPY s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY s-alt/Caddyfile /etc/caddy/Caddyfile

@@ -1,0 +1,23 @@
+name: visomaster
+channels:
+  - pytorch
+  - defaults
+  - conda-forge # Added for broader package availability
+dependencies:
+  - python=3.10 # Or 3.11, choose one consistently
+  - pytorch::pytorch # Use CPU version by default, specify version if needed
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - opencv # Installs opencv-python
+  # VisoMaster specific dependencies (add more if identified from its requirements)
+  # Jupyter specific dependencies
+  - jupyterlab
+  - notebook
+  - pip
+  # Add any pip dependencies if required by VisoMaster below
+  # - pip:
+  #   - some-pip-package

@@ -1,52 +1,36 @@
-# Workflow for ALT build (Portal, Runtime Models) - Uses alt/ folder
-name: Build ALT (Portal) VisoMaster Image
+name: Build Alternate VisoMaster
 
 on:
-  workflow_dispatch: # Manual trigger only
+  push:
+    branches: [ main ] # Or your default branch
+    paths:
+      - 'alt/**'
+      - 'download_and_start.sh'
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  build-alt:
+  build-and-push:
     runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-      - name: Free up disk space
-        run: |
-          echo "Initial disk space:" && df -h
-          # Remove unnecessary large packages
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules || true
-          # Prune Docker aggressively
-          docker system prune -af || true
-          # Clear package manager caches
-          sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
-          # Remove .NET SDK, large tools and caches
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/hostedtoolcache
-          # Clear other caches
-          rm -rf ~/.cache
-          # Show disk space after cleanup
-          echo "Disk space after cleanup:" && df -h
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push ALT Image
+
+      - name: Build and push Alternate image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./alt/Dockerfile # Use alt Dockerfile
+          context: . # Build context is the root
+          file: ./alt/Dockerfile # Specify the Dockerfile path
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/visomaster:portal-latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/visomaster:portal-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          compress: true
+          tags: remphan1618/godviso:alt # Or your desired tag format
