@@ -46,21 +46,23 @@ ENV PATH=$CONDA_DIR/bin:$PATH
 
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
-    rm ~/miniconda.sh && \
-    $CONDA_DIR/bin/conda clean -tipsy && \
-    ln -s $CONDA_DIR/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
-    echo ". $CONDA_DIR/etc/profile.d/conda.sh" >> ~/.bashrc && \
-    echo "conda activate base" >> ~/.bashrc
+    rm ~/miniconda.sh
+# --- End Miniconda Installation ---
+
+# Initialize conda for bash shell
+RUN $CONDA_DIR/bin/conda init bash
+
+# Set the default shell to bash with sourcing enabled
+SHELL ["/bin/bash", "-c"]
+
+# Now run conda commands in the bash shell where conda is initialized
+RUN $CONDA_DIR/bin/conda clean -tipsy
 
 # Set up Conda environment for VisoMaster
 COPY s-alt/environment.yml /tmp/environment.yml
 RUN conda env create -f /tmp/environment.yml && \
     conda clean -afy && \
     rm /tmp/environment.yml
-
-# Activate Conda environment by default in shell
-SHELL ["/bin/bash", "-c"]
-RUN echo "conda activate visomaster" >> ~/.bashrc
 
 # --- KasmVNC Installation ---
 RUN wget https://github.com/kasmtech/KasmVNC/releases/download/v1.2.0/kasmvncserver_jammy_1.2.0_amd64.deb -O /tmp/kasmvnc.deb && \
