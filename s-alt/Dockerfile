@@ -56,7 +56,7 @@ RUN $CONDA_DIR/bin/conda init bash
 SHELL ["/bin/bash", "-c"]
 
 # Now run conda commands in the bash shell where conda is initialized
-RUN $CONDA_DIR/bin/conda clean -tipsy
+RUN /opt/conda/bin/conda clean --all --yes
 
 # Set up Conda environment for VisoMaster
 COPY s-alt/environment.yml /tmp/environment.yml
