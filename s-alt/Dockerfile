@@ -92,9 +92,7 @@ COPY download_and_start.sh /app/download_and_start.sh
 COPY s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY s-alt/Caddyfile /etc/caddy/Caddyfile
 
-# Removed temporary diagnostic COPY line if it was present
-
-COPY s-alt/index.html /app/index.html # Copy the portal page
+COPY s-alt/index.html /app/index.html
 
 # Make entrypoint script executable
 RUN chmod +x /app/download_and_start.sh
