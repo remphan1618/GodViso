@@ -7,7 +7,7 @@ LABEL description="VisoMaster with Caddy, KasmVNC, Supervisord. Small Alternate 
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
-ENV KASM_VNC_PATH /usr/share/kasmvnc
+ENV KASM_VNC_PATH=/usr/share/kasmvnc # Corrected format
 
 # Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, Caddy, and KasmVNC deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,8 +40,8 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --de
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # --- Miniconda Installation ---
-ENV CONDA_DIR /opt/conda
-ENV PATH $CONDA_DIR/bin:$PATH
+ENV CONDA_DIR=/opt/conda # Corrected format
+ENV PATH=$CONDA_DIR/bin:$PATH # Corrected format
 
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
@@ -67,27 +67,35 @@ RUN wget https://github.com/kasmtech/KasmVNC/releases/download/v1.2.0/kasmvncser
     rm /tmp/kasmvnc.deb && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Configure KasmVNC (optional: modify vncserver.conf if needed - ensure it listens on localhost for Caddy proxy)
-# Default is usually fine as Caddy runs in the same container
+# --- KasmVNC Configuration ---
+# Allow connections from Caddy (running in the same container) by removing localhost restriction
+RUN sed -i 's/-localhost//' /etc/kasmvnc/vncserver.conf
+# Disable authentication by setting SecurityTypes=None
+RUN echo "SecurityTypes=None" >> /etc/kasmvnc/vncserver.conf
 
 # --- Application Setup ---
-ENV APP_DIR /app
+ENV APP_DIR=/app # Corrected format
 WORKDIR $APP_DIR
 
 # Clone VisoMaster repository
 RUN git clone https://github.com/joshsylvia/VisoMaster.git VisoMaster
 
 # Set up directories for models, dependencies, and logs
-ENV VISOMASTER_MODELS_DIR $APP_DIR/models
-ENV DEPS_DIR $APP_DIR/dependencies
-ENV LOGS_DIR $APP_DIR/logs
+ENV VISOMASTER_MODELS_DIR=$APP_DIR/models # Corrected format
+ENV DEPS_DIR=$APP_DIR/dependencies # Corrected format
+ENV LOGS_DIR=$APP_DIR/logs # Corrected format
 RUN mkdir -p $VISOMASTER_MODELS_DIR $DEPS_DIR $LOGS_DIR
 
 # Copy configuration files and entrypoint script from ROOT
 COPY download_and_start.sh /app/download_and_start.sh
 COPY s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY s-alt/Caddyfile /etc/caddy/Caddyfile
-COPY s-alt/index.html /app/index.html # Copy the portal page
+
+# --- Add this temporary diagnostic COPY ---
+COPY s-alt/index.html /tmp/index.html.test
+# --- End of temporary diagnostic COPY ---
+
+COPY s-alt/index.html /app/index.html # Copy the portal page (Original failing line)
 
 # Make entrypoint script executable
 RUN chmod +x /app/download_and_start.sh
