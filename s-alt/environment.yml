@@ -1,20 +1,17 @@
-name: visomaster
+name: viso_env
 channels:
   - pytorch
+  - nvidia
+  - conda-forge # Often good to include for other packages
   - defaults
-  - conda-forge # Added for broader package availability
 dependencies:
-  - python=3.10 # Or 3.11, choose one consistently
-  - pytorch::pytorch # Use CPU version by default, specify version if needed
-  - pytorch::torchvision
-  - pytorch::torchaudio
-  - numpy
-  - pandas
-  - scipy
-  - matplotlib
-  - opencv # Installs opencv-python
-  # VisoMaster specific dependencies (add more if identified from its requirements)
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cudatoolkit=11.8
   - pip
-  # Add any pip dependencies if required by VisoMaster below
-  # - pip:
+  - opencv # <--- ADD THIS (or ensure it's present)
+  # Other conda packages...
+  # - pip: # Keep pip section for pip-only packages
   #   - some-pip-package
