@@ -23,37 +23,19 @@ RUN apt-get update && \
     wget \
     git \
     xvfb \
-    libxkbcommon-x11-0 \
-    libxcb-icccm4 \
-    libxcb-image0 \
-    libxcb-keysyms1 \
-    libxcb-render-util0 \
-    libxcb-xinerama0 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxrandr2 \
-    libxtst6 \
-    libnss3 \
-    libcups2 \
-    libxss1 \
-    libxrender1 \
-    libasound2 \
-    libpangocairo-1.0-0 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    libgbm1 \
-    libglib2.0-0 \
-    # Install packages needed for adding Caddy repository
-    && apt-get install -y debian-keyring debian-archive-keyring apt-transport-https \
+    libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 \
+    libxcomposite1 libxcursor1 libxdamage1 libxrandr2 libxtst6 libnss3 libcups2 libxss1 libxrender1 \
+    libasound2 libpangocairo-1.0-0 libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libglib2.0-0 \
+    # Packages needed for adding Caddy repository
+    debian-keyring debian-archive-keyring apt-transport-https \
+    && \
     # Add Caddy repository and install Caddy
-    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
-    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
-    && apt-get update \
-    && apt-get install -y caddy \
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg && \
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list && \
+    apt-get update && \
+    apt-get install -y caddy && \
     # Clean up apt lists to reduce image size
-    && rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*
 
 # --- Combined Miniconda Install and Environment Creation ---
 ENV CONDA_DIR=/opt/conda
@@ -67,14 +49,12 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     $CONDA_DIR/bin/conda env create -f /tmp/environment.yml --prefix /opt/conda/envs/viso_env && \
     # Clean up the environment file
     rm /tmp/environment.yml && \
-    # Optional: Clean conda cache
+    # Clean conda cache
     $CONDA_DIR/bin/conda clean -afy
 
 # Activate the Conda environment for subsequent commands by adding its bin dir to PATH
 # This ensures commands like 'pip' and 'python' use the environment's versions
 ENV PATH /opt/conda/envs/viso_env/bin:$PATH
-
-# --- REMOVED SHELL directive, default /bin/sh -c is fine ---
 
 # --- File Copy Section (excluding environment.yml which was handled above) ---
 
@@ -83,14 +63,18 @@ ENV PATH /opt/conda/envs/viso_env/bin:$PATH
 # Ensure 'requirements.txt' exists at the repository root or adjust path.
 COPY requirements.txt .
 # This pip command should now use the pip from the activated viso_env
+# Added pip cache purge to prevent "No space left on device" errors
 RUN pip install --no-cache-dir -r requirements.txt && \
     # Remove the copied file after use
-    rm requirements.txt
+    rm requirements.txt && \
+    # Clean pip cache to save space
+    pip cache purge
 
-# Download KasmVNC
+# Download and Install KasmVNC
 ENV KASM_VNC_VERSION=1.3.1
 RUN wget "https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VNC_VERSION}/KasmVNC_debian_bookworm_${KASM_VNC_VERSION}_amd64.deb" -O /tmp/kasmvnc.deb && \
-    apt-get update && apt-get install -y /tmp/kasmvnc.deb && rm /tmp/kasmvnc.deb && \
+    apt-get update && apt-get install -y --no-install-recommends /tmp/kasmvnc.deb && \
+    rm /tmp/kasmvnc.deb && \
     # Clean up apt lists again after installing the deb package
     rm -rf /var/lib/apt/lists/*
 
@@ -111,6 +95,7 @@ COPY ./s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY ./s-alt/Caddyfile /etc/caddy/Caddyfile
 
 # Copy the startup script and make it executable
+# Ensure download_and_start.sh is in the repository root
 COPY download_and_start.sh /app/download_and_start.sh
 RUN chmod +x /app/download_and_start.sh
 
