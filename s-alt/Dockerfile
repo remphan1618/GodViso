@@ -1,114 +1,101 @@
-# Small Alternate VisoMaster Setup with Caddy and KasmVNC
-# Base Image: Ubuntu 22.04
-FROM ubuntu:22.04 AS base
+# Use an official Ubuntu base image
+FROM ubuntu:22.04
 
-LABEL maintainer="remphan1618"
-LABEL description="VisoMaster with Caddy, KasmVNC, Supervisord. Small Alternate Setup."
+# Set the working directory
+WORKDIR /app
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
-ENV KASM_VNC_PATH=/usr/share/kasmvnc # Corrected with space before comment
+
+# Corrected with space before comment - Moved comment to its own line
+ENV KASM_VNC_PATH=/usr/share/kasmvnc
 
 # Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, Caddy, and KasmVNC deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
+# Update package lists and install dependencies in a single RUN command to reduce layers
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     ca-certificates \
-    bzip2 \
-    unzip \
-    git \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    supervisor \
-    xvfb \
-    # KasmVNC dependencies
-    libjpeg-turbo8 \
-    libwebpdemux2 \
-    libfontconfig1 \
-    x11vnc \
-    xvfb \
-    xterm \
-    # Caddy dependencies
     curl \
     gnupg \
-    # Clean up
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install Caddy
-RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+    lsb-release \
+    supervisor \
+    wget \
+    git \
+    xvfb \
+    libxkbcommon-x11-0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-render-util0 \
+    libxcb-xinerama0 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxtst6 \
+    libnss3 \
+    libcups2 \
+    libxss1 \
+    libxrender1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libgbm1 \
+    libglib2.0-0 \
+    # Install Caddy
+    && install -y debian-keyring debian-archive-keyring apt-transport-https \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
-    && apt-get update && apt-get install -y caddy \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get update \
+    && apt-get install -y caddy \
+    # Clean up apt lists to reduce image size
+    && rm -rf /var/lib/apt/lists/*
 
-# --- Miniconda Installation ---
-ENV CONDA_DIR=/opt/conda # Corrected with space before comment
-ENV PATH=$CONDA_DIR/bin:$PATH # Corrected with space before comment
-
+# Install Miniconda
+ENV CONDA_DIR=/opt/conda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
-    rm ~/miniconda.sh
-# --- End Miniconda Installation ---
+    rm ~/miniconda.sh && \
+    $CONDA_DIR/bin/conda init bash
 
-# Initialize conda for bash shell
-RUN $CONDA_DIR/bin/conda init bash
+# Make conda command available in subsequent RUN instructions
+SHELL ["/bin/bash", "--login", "-c"]
 
-# Set the default shell to bash with sourcing enabled
-SHELL ["/bin/bash", "-c"]
+# Create a Conda environment from the environment.yml file
+COPY environment.yml .
+RUN conda env create -f environment.yml --prefix /opt/conda/envs/viso_env
 
-# Now run conda commands in the bash shell where conda is initialized
-RUN /opt/conda/bin/conda clean --all --yes
+# Activate the Conda environment for subsequent commands
+ENV PATH /opt/conda/envs/viso_env/bin:$PATH
 
-# Set up Conda environment for VisoMaster
-COPY s-alt/environment.yml /tmp/environment.yml
-RUN conda env create -f /tmp/environment.yml && \
-    conda clean -afy && \
-    rm /tmp/environment.yml
+# Install Python dependencies from requirements.txt using pip within the Conda environment
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# --- KasmVNC Installation ---
-RUN wget https://github.com/kasmtech/KasmVNC/releases/download/v1.2.0/kasmvncserver_jammy_1.2.0_amd64.deb -O /tmp/kasmvnc.deb && \
-    apt-get update && apt-get install -y /tmp/kasmvnc.deb && \
-    rm /tmp/kasmvnc.deb && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Download KasmVNC
+ENV KASM_VNC_VERSION=1.3.1
+RUN wget "https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VNC_VERSION}/KasmVNC_debian_bookworm_${KASM_VNC_VERSION}_amd64.deb" -O /tmp/kasmvnc.deb && \
+    apt-get update && apt-get install -y /tmp/kasmvnc.deb && rm /tmp/kasmvnc.deb && \
+    # Clean up apt lists again after installing the deb package
+    rm -rf /var/lib/apt/lists/*
 
-# --- Diagnostic step to debug missing vncserver.conf ---
-RUN echo "Listing contents of /etc/kasmvnc/ after install:" && ls -la /etc/kasmvnc/
-# --- End diagnostic step ---
+# Copy the application code into the container
+COPY ./VisoMaster /app/VisoMaster
+COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html # Ensure correct path
 
-# --- KasmVNC Configuration ---
-# Allow connections from Caddy (running in the same container) by removing localhost restriction
-RUN sed -i 's/-localhost//' /etc/kasmvnc/vncserver.conf
-# Disable authentication by setting SecurityTypes=None
-RUN echo "SecurityTypes=None" >> /etc/kasmvnc/vncserver.conf
+# Copy Supervisord configuration file
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# --- Application Setup ---
-ENV APP_DIR=/app # Corrected with space before comment
-WORKDIR $APP_DIR
+# Copy Caddy configuration file
+COPY Caddyfile /etc/caddy/Caddyfile
 
-# Clone VisoMaster repository
-RUN git clone https://github.com/joshsylvia/VisoMaster.git VisoMaster
+# Expose ports for VNC, the web UI, and potentially other services if needed
+EXPOSE 6901 5000
 
-# Set up directories for models, dependencies, and logs
-ENV VISOMASTER_MODELS_DIR=$APP_DIR/models # Corrected with space before comment
-ENV DEPS_DIR=$APP_DIR/dependencies # Corrected with space before comment
-ENV LOGS_DIR=$APP_DIR/logs # Corrected with space before comment
-RUN mkdir -p $VISOMASTER_MODELS_DIR $DEPS_DIR $LOGS_DIR
+# Set the entrypoint to run Supervisord
+ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
 
-# Copy configuration files and entrypoint script from ROOT
-COPY download_and_start.sh /app/download_and_start.sh
-COPY s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY s-alt/Caddyfile /etc/caddy/Caddyfile
-
-COPY s-alt/index.html /app/index.html
-
-# Make entrypoint script executable
-RUN chmod +x /app/download_and_start.sh
-
-# Expose Caddy's port (KasmVNC is proxied)
-EXPOSE 11111
-
-# Set the entrypoint to the common script
-ENTRYPOINT ["/app/download_and_start.sh"]
-
-# Default command (will be executed by entrypoint script)
-# This CMD is mostly a placeholder as supervisord starts the main processes.
-# We keep a simple command like sleep to keep the container running if supervisord fails.
-CMD ["sleep", "infinity"]
+# Default command (can be overridden)
+CMD ["--nodaemon"]
