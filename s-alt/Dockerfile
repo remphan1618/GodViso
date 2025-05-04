@@ -5,6 +5,7 @@ FROM ubuntu:22.04
 WORKDIR /app
 
 # Prevent interactive prompts during package installation
+# Using recommended key=value format
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Set path for KasmVNC (ensure this variable is needed by subsequent steps or scripts)
@@ -54,34 +55,34 @@ RUN apt-get update && \
     # Clean up apt lists to reduce image size
     && rm -rf /var/lib/apt/lists/*
 
-# Install Miniconda
+# --- Combined Miniconda Install and Environment Creation ---
 ENV CONDA_DIR=/opt/conda
+# Copy environment file first
+COPY ./s-alt/environment.yml /tmp/environment.yml
+# Install Miniconda and create the environment in the same RUN layer
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
     rm ~/miniconda.sh && \
-    $CONDA_DIR/bin/conda init bash
+    # Use the installed conda to create the environment immediately
+    $CONDA_DIR/bin/conda env create -f /tmp/environment.yml --prefix /opt/conda/envs/viso_env && \
+    # Clean up the environment file
+    rm /tmp/environment.yml && \
+    # Optional: Clean conda cache
+    $CONDA_DIR/bin/conda clean -afy
 
-# Make conda command available in subsequent RUN instructions
-SHELL ["/bin/bash", "--login", "-c"]
-
-# --- File Copy Section ---
-# NOTE: The source paths below assume the build context is the repository root,
-#       and these files exist in the 's-alt' subdirectory relative to the root.
-
-# Copy the Conda environment file from the s-alt directory in the build context
-# to the current WORKDIR (/app) in the container.
-COPY ./s-alt/environment.yml .
-RUN conda env create -f environment.yml --prefix /opt/conda/envs/viso_env && \
-    # Remove the copied file after use to keep the image clean
-    rm environment.yml
-
-# Activate the Conda environment for subsequent commands
+# Activate the Conda environment for subsequent commands by adding its bin dir to PATH
+# This ensures commands like 'pip' and 'python' use the environment's versions
 ENV PATH /opt/conda/envs/viso_env/bin:$PATH
+
+# --- REMOVED SHELL directive, default /bin/sh -c is fine ---
+
+# --- File Copy Section (excluding environment.yml which was handled above) ---
 
 # Copy the requirements file from the root of the build context
 # to the current WORKDIR (/app) in the container.
 # Ensure 'requirements.txt' exists at the repository root or adjust path.
 COPY requirements.txt .
+# This pip command should now use the pip from the activated viso_env
 RUN pip install --no-cache-dir -r requirements.txt && \
     # Remove the copied file after use
     rm requirements.txt
@@ -109,7 +110,7 @@ COPY ./s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # into the container. Ensure 'Caddyfile' exists in './s-alt/'.
 COPY ./s-alt/Caddyfile /etc/caddy/Caddyfile
 
-# --- NEW: Copy the startup script and make it executable ---
+# Copy the startup script and make it executable
 COPY download_and_start.sh /app/download_and_start.sh
 RUN chmod +x /app/download_and_start.sh
 
@@ -118,9 +119,9 @@ RUN chmod +x /app/download_and_start.sh
 # Expose ports for VNC, the web UI, and potentially other services if needed
 EXPOSE 6901 5000
 
-# --- MODIFIED: Set the entrypoint to the startup script ---
+# Set the entrypoint to the startup script
 ENTRYPOINT ["/app/download_and_start.sh"]
 
-# --- MODIFIED: Set the default command to be executed by the entrypoint script's 'exec "$@"' ---
+# Set the default command to be executed by the entrypoint script's 'exec "$@"'
 # This will start supervisord in the foreground after the script runs
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf", "--nodaemon"]
