@@ -27,6 +27,11 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # --- Add this step ---
+      - name: List s-alt directory contents
+        run: ls -la s-alt/
+      # --- End of added step ---
+
       - name: Build and push Small Alternate image
         uses: docker/build-push-action@v5
         with:
@@ -34,3 +39,5 @@ jobs:
           file: ./s-alt/Dockerfile # Specify the Dockerfile path
           push: true
           tags: remphan1618/godviso:s-alt # Or your desired tag format
+          # Add no-cache flag for debugging this specific issue
+          no-cache: true
