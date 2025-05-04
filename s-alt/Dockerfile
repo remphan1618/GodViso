@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     # KasmVNC dependencies
     libjpeg-turbo8 \
-    libwebp6 \
+    libwebpdemux2 \
     libfontconfig1 \
     x11vnc \
     xvfb \
