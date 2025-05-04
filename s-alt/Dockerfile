@@ -132,7 +132,8 @@ COPY ./VisoMaster /app/VisoMaster
 # Copy configuration files from the build context
 COPY ./s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY ./s-alt/Caddyfile /etc/caddy/Caddyfile
-COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html # If needed by Caddy/App
+# --- MODIFIED: Removed trailing comment ---
+COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html
 
 # Copy the startup script and make it executable
 # Ensure download_and_start.sh is in the repository root
