@@ -1,13 +1,13 @@
 # Use an official Ubuntu base image
 FROM ubuntu:22.04
 
-# Set the working directory
+# Set the working directory inside the container
 WORKDIR /app
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Corrected with space before comment - Moved comment to its own line
+# Set path for KasmVNC (ensure this variable is needed by subsequent steps or scripts)
 ENV KASM_VNC_PATH=/usr/share/kasmvnc
 
 # Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, Caddy, and KasmVNC deps
@@ -63,16 +63,27 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 # Make conda command available in subsequent RUN instructions
 SHELL ["/bin/bash", "--login", "-c"]
 
-# Create a Conda environment from the environment.yml file
-COPY environment.yml .
-RUN conda env create -f environment.yml --prefix /opt/conda/envs/viso_env
+# --- File Copy Section ---
+# NOTE: The source paths below assume the build context is the repository root,
+#       and these files exist in the 's-alt' subdirectory relative to the root.
+
+# Copy the Conda environment file from the s-alt directory in the build context
+# to the current WORKDIR (/app) in the container.
+COPY ./s-alt/environment.yml .
+RUN conda env create -f environment.yml --prefix /opt/conda/envs/viso_env && \
+    # Remove the copied file after use to keep the image clean
+    rm environment.yml
 
 # Activate the Conda environment for subsequent commands
 ENV PATH /opt/conda/envs/viso_env/bin:$PATH
 
-# Install Python dependencies from requirements.txt using pip within the Conda environment
+# Copy the requirements file from the root of the build context
+# to the current WORKDIR (/app) in the container.
+# Ensure 'requirements.txt' exists at the repository root or adjust path.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    # Remove the copied file after use
+    rm requirements.txt
 
 # Download KasmVNC
 ENV KASM_VNC_VERSION=1.3.1
@@ -81,15 +92,24 @@ RUN wget "https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VNC_VERS
     # Clean up apt lists again after installing the deb package
     rm -rf /var/lib/apt/lists/*
 
-# Copy the application code into the container
+# Copy the application code from the VisoMaster directory in the build context
+# into the /app/VisoMaster directory in the container.
 COPY ./VisoMaster /app/VisoMaster
-COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html # Ensure correct path
 
-# Copy Supervisord configuration file
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Copy the specific index.html from the s-alt directory in the build context
+# to the target location within the application code in the container.
+# Removed trailing comment that might cause issues.
+COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html
 
-# Copy Caddy configuration file
-COPY Caddyfile /etc/caddy/Caddyfile
+# Copy Supervisord configuration file from the s-alt directory in the build context
+# into the container. Ensure 'supervisord.conf' exists in './s-alt/'.
+COPY ./s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy Caddy configuration file from the s-alt directory in the build context
+# into the container. Ensure 'Caddyfile' exists in './s-alt/'.
+COPY ./s-alt/Caddyfile /etc/caddy/Caddyfile
+
+# --- End File Copy Section ---
 
 # Expose ports for VNC, the web UI, and potentially other services if needed
 EXPOSE 6901 5000
