@@ -44,8 +44,9 @@ RUN apt-get update && \
     libgtk-3-0 \
     libgbm1 \
     libglib2.0-0 \
-    # Install Caddy
-    && install -y debian-keyring debian-archive-keyring apt-transport-https \
+    # Install packages needed for adding Caddy repository
+    && apt-get install -y debian-keyring debian-archive-keyring apt-transport-https \
+    # Add Caddy repository and install Caddy
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
     && apt-get update \
@@ -98,7 +99,6 @@ COPY ./VisoMaster /app/VisoMaster
 
 # Copy the specific index.html from the s-alt directory in the build context
 # to the target location within the application code in the container.
-# Removed trailing comment that might cause issues.
 COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html
 
 # Copy Supervisord configuration file from the s-alt directory in the build context
@@ -109,13 +109,18 @@ COPY ./s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # into the container. Ensure 'Caddyfile' exists in './s-alt/'.
 COPY ./s-alt/Caddyfile /etc/caddy/Caddyfile
 
+# --- NEW: Copy the startup script and make it executable ---
+COPY download_and_start.sh /app/download_and_start.sh
+RUN chmod +x /app/download_and_start.sh
+
 # --- End File Copy Section ---
 
 # Expose ports for VNC, the web UI, and potentially other services if needed
 EXPOSE 6901 5000
 
-# Set the entrypoint to run Supervisord
-ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# --- MODIFIED: Set the entrypoint to the startup script ---
+ENTRYPOINT ["/app/download_and_start.sh"]
 
-# Default command (can be overridden)
-CMD ["--nodaemon"]
+# --- MODIFIED: Set the default command to be executed by the entrypoint script's 'exec "$@"' ---
+# This will start supervisord in the foreground after the script runs
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf", "--nodaemon"]
