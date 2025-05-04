@@ -7,7 +7,9 @@ LABEL description="VisoMaster with Caddy, KasmVNC, Supervisord. Small Alternate 
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
-ENV KASM_VNC_PATH=/usr/share/kasmvnc # Space added
+
+# Space added
+ENV KASM_VNC_PATH=/usr/share/kasmvnc
 
 # Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, Caddy, and KasmVNC deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
