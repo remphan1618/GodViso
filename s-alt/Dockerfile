@@ -58,17 +58,23 @@ ENV PATH /opt/conda/envs/viso_env/bin:$PATH
 
 # --- File Copy Section (excluding environment.yml which was handled above) ---
 
-# Copy the requirements file from the root of the build context
-# to the current WORKDIR (/app) in the container.
-# Ensure 'requirements.txt' exists at the repository root or adjust path.
-COPY requirements.txt .
-# This pip command should now use the pip from the activated viso_env
-# Added pip cache purge to prevent "No space left on device" errors
-RUN pip install --no-cache-dir -r requirements.txt && \
-    # Remove the copied file after use
-    rm requirements.txt && \
-    # Clean pip cache to save space
+# --- MODIFIED: Split pip install to manage disk space ---
+# 1. Install large packages first
+COPY requirements_large.txt .
+RUN echo "--- Installing large pip packages ---" && \
+    pip install --no-cache-dir -r requirements_large.txt && \
+    rm requirements_large.txt && \
+    echo "--- Purging pip cache after large packages ---" && \
     pip cache purge
+
+# 2. Install remaining packages
+COPY requirements_other.txt .
+RUN echo "--- Installing other pip packages ---" && \
+    pip install --no-cache-dir -r requirements_other.txt && \
+    rm requirements_other.txt && \
+    echo "--- Purging pip cache after other packages ---" && \
+    pip cache purge
+# --- End of modified pip install section ---
 
 # Download and Install KasmVNC
 ENV KASM_VNC_VERSION=1.3.1
