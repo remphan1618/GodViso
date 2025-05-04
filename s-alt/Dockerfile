@@ -8,7 +8,6 @@ LABEL description="VisoMaster with Caddy, KasmVNC, Supervisord. Small Alternate 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Space added
 ENV KASM_VNC_PATH=/usr/share/kasmvnc
 
 # Install base dependencies, Miniconda prerequisites, Supervisord, wget, git, xvfb, Caddy, and KasmVNC deps
@@ -42,8 +41,8 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --de
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # --- Miniconda Installation ---
-ENV CONDA_DIR=/opt/conda # Space added
-ENV PATH=$CONDA_DIR/bin:$PATH # Space added
+ENV CONDA_DIR=/opt/conda
+ENV PATH=$CONDA_DIR/bin:$PATH
 
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR && \
@@ -76,16 +75,16 @@ RUN sed -i 's/-localhost//' /etc/kasmvnc/vncserver.conf
 RUN echo "SecurityTypes=None" >> /etc/kasmvnc/vncserver.conf
 
 # --- Application Setup ---
-ENV APP_DIR=/app # Space added
+ENV APP_DIR=/app
 WORKDIR $APP_DIR
 
 # Clone VisoMaster repository
 RUN git clone https://github.com/joshsylvia/VisoMaster.git VisoMaster
 
 # Set up directories for models, dependencies, and logs
-ENV VISOMASTER_MODELS_DIR=$APP_DIR/models # Space added
-ENV DEPS_DIR=$APP_DIR/dependencies # Space added
-ENV LOGS_DIR=$APP_DIR/logs # Space added
+ENV VISOMASTER_MODELS_DIR=$APP_DIR/models
+ENV DEPS_DIR=$APP_DIR/dependencies
+ENV LOGS_DIR=$APP_DIR/logs
 RUN mkdir -p $VISOMASTER_MODELS_DIR $DEPS_DIR $LOGS_DIR
 
 # Copy configuration files and entrypoint script from ROOT
