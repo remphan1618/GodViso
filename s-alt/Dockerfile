@@ -67,7 +67,8 @@ RUN pip install --no-cache-dir --extra-index-url ${PYTORCH_INDEX_URL} --extra-in
 
 # Download and Install KasmVNC
 ENV KASM_VNC_VERSION=1.3.1
-RUN wget "https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VNC_VERSION}/KasmVNC_debian_bookworm_${KASM_VNC_VERSION}_amd64.deb" -O /tmp/kasmvnc.deb && \
+# --- MODIFIED: Corrected KasmVNC filename for Ubuntu 22.04 ---
+RUN wget "https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VNC_VERSION}/KasmVNC_ubuntu_22.04_${KASM_VNC_VERSION}_amd64.deb" -O /tmp/kasmvnc.deb && \
     apt-get update && apt-get install -y --no-install-recommends /tmp/kasmvnc.deb && \
     rm /tmp/kasmvnc.deb && \
     rm -rf /var/lib/apt/lists/*
@@ -132,7 +133,6 @@ COPY ./VisoMaster /app/VisoMaster
 # Copy configuration files from the build context
 COPY ./s-alt/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY ./s-alt/Caddyfile /etc/caddy/Caddyfile
-# --- MODIFIED: Removed trailing comment ---
 COPY ./s-alt/index.html /app/VisoMaster/app/ui/web/templates/index.html
 
 # Copy the startup script and make it executable
